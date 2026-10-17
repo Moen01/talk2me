@@ -37,7 +37,7 @@ final class AppSettings: ObservableObject {
     @Published var claudePath: String { didSet { defaults.set(claudePath, forKey: Key.claudePath) } }
     @Published var extraInstructions: String { didSet { defaults.set(extraInstructions, forKey: Key.extraInstructions) } }
 
-    var hasOpenedSettings: Bool {
+    var hasCompletedOnboarding: Bool {
         get { defaults.bool(forKey: Key.onboarded) }
         set { defaults.set(newValue, forKey: Key.onboarded) }
     }

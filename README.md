@@ -7,6 +7,20 @@ built-in recognizer, so audio never leaves the machine. The text is then cleaned
 (punctuation, filler words, spoken formatting such as "new paragraph") and pasted into the
 focused text field. Your clipboard is put back afterwards.
 
+## Download and install
+
+Requires macOS 26 or later on an Apple silicon Mac.
+
+1. Download **Talk2Me-x.y.z.dmg** (or the .zip) from the
+   [latest release](https://github.com/Moen01/talk2me/releases/latest).
+2. Open the disk image and drag **Talk2Me** to **Applications**.
+3. Open Talk2Me. Because this build is not notarized by Apple yet, macOS blocks it the first
+   time: click **Done**, then open **System Settings > Privacy & Security**, scroll down to
+   "Talk2Me was blocked" and click **Open Anyway**.
+4. The setup guide walks you through permissions, connecting Claude and choosing your shortcut,
+   and lets you try a dictation before you finish. Reopen it any time from the menu-bar icon
+   with **Setup Guide…**.
+
 ## How to use it
 
 | Action | What happens |
@@ -55,21 +69,30 @@ dictation is never lost.
 - For the Claude Code backend: Claude Code 2.1.280 or later to use Opus 5.5 (`claude update`,
   or `brew upgrade claude-code` for a Homebrew install)
 
-## Build and run
+## Build from source
 
 ```sh
 ./scripts/build-app.sh
 open build/Talk2Me.app
 ```
 
-On first launch, grant:
+On first launch the setup guide asks for two permissions:
 
-1. **Accessibility** (System Settings > Privacy & Security > Accessibility): needed to watch
-   the Fn key and to paste.
-2. **Microphone**: asked automatically on first launch.
+1. **Microphone**: to hear you while you hold the shortcut.
+2. **Accessibility** (System Settings > Privacy & Security > Accessibility): to notice the
+   shortcut key and to paste.
 
 To stop Fn from also opening the emoji picker, leave "Hide Fn from other apps" on in Settings,
 or set System Settings > Keyboard > "Press globe key" to "Do Nothing".
+
+### Making a release
+
+```sh
+./scripts/package-release.sh   # writes dist/Talk2Me-<version>.zip, .dmg and SHA256SUMS
+```
+
+The version comes from `CFBundleShortVersionString` in `Resources/Info.plist`.
+`scripts/make-icon.sh` redraws `Resources/AppIcon.icns`.
 
 The build is ad-hoc signed, so macOS asks for Accessibility access again after each rebuild.
 For a stable signature, create a code-signing certificate and build with

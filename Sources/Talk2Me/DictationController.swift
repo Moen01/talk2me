@@ -1,19 +1,26 @@
 import AVFAudio
+import Combine
 import Foundation
 import Talk2MeCore
 
 /// Runs one dictation at a time: hold key → record → on-device transcript → Claude cleanup → paste.
 @MainActor
-final class DictationController {
+final class DictationController: ObservableObject {
     enum Phase: Equatable {
         case idle, recording, transcribing, cleaning, inserting
     }
 
-    private(set) var phase: Phase = .idle { didSet { onChange?() } }
-    private(set) var isHandsFree = false { didSet { onChange?() } }
-    private(set) var lastResult = "No dictation yet." { didSet { onChange?() } }
-    private var prepareError: String? { didSet { onChange?() } }
+    private(set) var phase: Phase = .idle { didSet { changed() } }
+    private(set) var isHandsFree = false { didSet { changed() } }
+    private(set) var lastResult = "No dictation yet." { didSet { changed() } }
+    private var prepareError: String? { didSet { changed() } }
+    /// For the menu bar; SwiftUI views observe the controller instead.
     var onChange: (() -> Void)?
+
+    private func changed() {
+        objectWillChange.send()
+        onChange?()
+    }
 
     var holdKeyName: String { KeyboardLayout.name(of: settings.holdKey) }
 
@@ -27,7 +34,7 @@ final class DictationController {
     private let capture = AudioCapture()
     private let inserter = TextInserter()
     private var machine = HotkeyStateMachine()
-    private var prepared: (localeID: String, locale: Locale, format: AVAudioFormat)? { didSet { onChange?() } }
+    private var prepared: (localeID: String, locale: Locale, format: AVAudioFormat)? { didSet { changed() } }
     private var current: (session: DictationSession, started: Task<Error?, Never>)?
     private var cachedAPIKey: String?
 
@@ -78,7 +85,7 @@ final class DictationController {
         if phase == .recording { cancelRecording() }
         machine.reset()
         isHandsFree = false
-        onChange?()
+        changed()
     }
 
     /// Returns true when the key was used (Enter finishing or Escape discarding hands-free)

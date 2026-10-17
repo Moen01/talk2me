@@ -9,12 +9,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var controller: DictationController!
     private var statusBar: StatusBarController!
     private var settingsWindow: NSWindow?
+    private var onboardingWindow: NSWindow?
     private var tapRetryTimer: Timer?
     private var subscriptions = Set<AnyCancellable>()
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         controller = DictationController(settings: settings)
-        statusBar = StatusBarController(controller: controller) { [weak self] in self?.showSettings() }
+        statusBar = StatusBarController(controller: controller, actions: .init(
+            openSettings: { [weak self] in self?.showSettings() },
+            openSetupGuide: { [weak self] in self?.showOnboarding() },
+            openAbout: { [weak self] in self?.showAbout() }
+        ))
         controller.onChange = { [weak self] in self?.statusBar.refresh() }
 
         if settings.backend == .apiKey {
@@ -50,15 +55,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
             .store(in: &subscriptions)
 
-        Task {
-            if Permissions.microphoneStatus == .undetermined { _ = await Permissions.requestMicrophone() }
-            await controller.prepareDictation()
-        }
+        Task { await controller.prepareDictation() }
         startHotkeys()
 
-        if !settings.hasOpenedSettings {
-            settings.hasOpenedSettings = true
-            showSettings()
+        // First launch: the setup guide asks for permissions itself, one at a time.
+        if settings.hasCompletedOnboarding {
+            Task {
+                if Permissions.microphoneStatus == .undetermined { _ = await Permissions.requestMicrophone() }
+            }
+        } else {
+            showOnboarding()
         }
     }
 
@@ -70,7 +76,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             statusBar.refresh()
             return
         }
-        Permissions.promptForAccessibility()
+        if settings.hasCompletedOnboarding { Permissions.promptForAccessibility() }
         tapRetryTimer?.invalidate()
         tapRetryTimer = Timer.scheduledTimer(withTimeInterval: 2, repeats: true) { [weak self] _ in
             MainActor.assumeIsolated {
@@ -103,5 +109,46 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         NSApp.activate()
         settingsWindow?.makeKeyAndOrderFront(nil)
+    }
+
+    private func showOnboarding() {
+        if onboardingWindow == nil {
+            let view = OnboardingView(
+                settings: settings,
+                controller: controller,
+                recordKey: { [weak self] completion in self?.hotkeys.captureNextKey(completion) },
+                cancelRecording: { [weak self] in self?.hotkeys.cancelCapture() },
+                finish: { [weak self] in self?.onboardingWindow?.close() }
+            )
+            let window = NSWindow(contentViewController: NSHostingController(rootView: view))
+            window.title = "Welcome to Talk2Me"
+            window.styleMask = [.titled, .closable, .fullSizeContentView]
+            window.titlebarAppearsTransparent = true
+            window.titleVisibility = .hidden
+            window.isMovableByWindowBackground = true
+            window.isReleasedWhenClosed = false
+            window.center()
+            NotificationCenter.default.addObserver(forName: NSWindow.willCloseNotification, object: window, queue: .main) { [weak self] _ in
+                // Closing the guide counts as done; it stays available from the menu.
+                MainActor.assumeIsolated { self?.settings.hasCompletedOnboarding = true }
+            }
+            onboardingWindow = window
+        }
+        NSApp.activate()
+        onboardingWindow?.makeKeyAndOrderFront(nil)
+    }
+
+    private func showAbout() {
+        let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "dev"
+        let credits = NSAttributedString(
+            string: "Hold a key to dictate. Speech is transcribed on your Mac and cleaned up by Claude.",
+            attributes: [.font: NSFont.systemFont(ofSize: 11), .foregroundColor: NSColor.secondaryLabelColor]
+        )
+        NSApp.activate()
+        NSApp.orderFrontStandardAboutPanel(options: [
+            .applicationName: "Talk2Me",
+            .applicationVersion: version,
+            .credits: credits,
+        ])
     }
 }

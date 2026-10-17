@@ -94,3 +94,33 @@ struct ClaudeCodeBackendTests {
         #expect(throws: CleanupError.self) { try ClaudeCodeBackend.parseOutput(Data("boom".utf8)) }
     }
 }
+
+struct ClaudeCodeStatusTests {
+    @Test func parsesVersionLine() {
+        #expect(ClaudeCodeBackend.parseVersion("2.1.206 (Claude Code)\n") == "2.1.206")
+        #expect(ClaudeCodeBackend.parseVersion("command not found") == nil)
+    }
+
+    @Test func parsesAuthStatus() {
+        let json = #"{"loggedIn":true,"authMethod":"claude.ai","apiProvider":"firstParty","subscriptionType":"pro"}"#
+        let status = ClaudeCodeBackend.parseAuthStatus(Data(json.utf8))
+        #expect(status.loggedIn)
+        #expect(status.authMethod == "claude.ai")
+        #expect(status.subscriptionType == "pro")
+        #expect(!ClaudeCodeBackend.parseAuthStatus(Data("not json".utf8)).loggedIn)
+    }
+
+    @Test func comparesVersionsNumerically() {
+        #expect(ClaudeCodeBackend.compareVersions("2.1.206", "2.1.280") == .orderedAscending)
+        #expect(ClaudeCodeBackend.compareVersions("2.10.0", "2.9.9") == .orderedDescending)
+        #expect(ClaudeCodeBackend.compareVersions("2.1.280", "2.1.280") == .orderedSame)
+    }
+
+    @Test func opusNeedsANewerClaudeCode() {
+        let old = ClaudeCodeBackend.Status(version: "2.1.206", loggedIn: true, authMethod: nil, subscriptionType: nil)
+        #expect(!old.supports(.opus))
+        #expect(old.supports(.sonnet))
+        let unknown = ClaudeCodeBackend.Status(version: nil, loggedIn: true, authMethod: nil, subscriptionType: nil)
+        #expect(unknown.supports(.opus))
+    }
+}

@@ -18,6 +18,12 @@ public enum ClaudeModel: String, CaseIterable, Codable, Sendable, Identifiable {
 
     /// Server-side refusal fallbacks exist for Opus 5.5 and Sonnet 5.5, not for Haiku 5.5.
     public var supportsServerFallbacks: Bool { self != .haiku }
+
+    /// The oldest Claude Code that can run this model, when known. Claude Code 2.1.206
+    /// rejected Opus 5.5 with "version 2.1.280 or newer is required".
+    public var minimumClaudeCodeVersion: String? {
+        self == .opus ? "2.1.280" : nil
+    }
 }
 
 /// Where the cleanup step sends a transcript.

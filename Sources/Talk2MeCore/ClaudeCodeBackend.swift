@@ -64,20 +64,88 @@ public struct ClaudeCodeBackend: CleanupBackend {
     }
 
     public func cleanUp(_ transcript: String, model: ClaudeModel, instructions: String) async throws -> String {
-        let output = try await run(
+        let output = try await Self.run(
+            executable,
             arguments: Self.arguments(model: model, instructions: instructions),
             stdin: CleanupPrompt.userMessage(for: transcript)
         )
         return try Self.parseOutput(output)
     }
 
+    // MARK: - Install and sign-in status
+
+    /// What the setup guide shows about the user's Claude Code install.
+    public struct Status: Sendable, Equatable {
+        public var version: String?
+        public var loggedIn: Bool
+        /// "claude.ai" for a subscription login, otherwise an API key or cloud provider.
+        public var authMethod: String?
+        /// "pro", "max", … for subscription logins.
+        public var subscriptionType: String?
+
+        public init(version: String?, loggedIn: Bool, authMethod: String?, subscriptionType: String?) {
+            self.version = version
+            self.loggedIn = loggedIn
+            self.authMethod = authMethod
+            self.subscriptionType = subscriptionType
+        }
+
+        /// Whether this install can run `model`; unknown versions are given the benefit of the doubt.
+        public func supports(_ model: ClaudeModel) -> Bool {
+            guard let version, let minimum = model.minimumClaudeCodeVersion else { return true }
+            return ClaudeCodeBackend.compareVersions(version, minimum) != .orderedAscending
+        }
+    }
+
+    public static func status(of executable: URL) async -> Status {
+        async let versionOutput = try? run(executable, arguments: ["--version"], stdin: "")
+        async let authOutput = try? run(executable, arguments: ["auth", "status", "--json"], stdin: "")
+        let version = await versionOutput.flatMap { parseVersion(String(decoding: $0, as: UTF8.self)) }
+        var status = await authOutput.map(parseAuthStatus) ?? Status(version: nil, loggedIn: false, authMethod: nil, subscriptionType: nil)
+        status.version = version
+        return status
+    }
+
+    /// `claude --version` prints e.g. "2.1.206 (Claude Code)".
+    public static func parseVersion(_ output: String) -> String? {
+        output.split(whereSeparator: \.isWhitespace).first.map(String.init).flatMap { token in
+            token.first?.isNumber == true ? token : nil
+        }
+    }
+
+    struct AuthStatus: Decodable {
+        let loggedIn: Bool?
+        let authMethod: String?
+        let subscriptionType: String?
+    }
+
+    public static func parseAuthStatus(_ data: Data) -> Status {
+        let auth = try? JSONDecoder().decode(AuthStatus.self, from: data)
+        return Status(version: nil, loggedIn: auth?.loggedIn ?? false,
+                      authMethod: auth?.authMethod, subscriptionType: auth?.subscriptionType)
+    }
+
+    /// Numeric dotted-version comparison: "2.1.206" < "2.1.280" < "2.10.0".
+    public static func compareVersions(_ a: String, _ b: String) -> ComparisonResult {
+        let left = a.split(separator: ".").map { Int($0) ?? 0 }
+        let right = b.split(separator: ".").map { Int($0) ?? 0 }
+        for index in 0..<max(left.count, right.count) {
+            let l = index < left.count ? left[index] : 0
+            let r = index < right.count ? right[index] : 0
+            if l != r { return l < r ? .orderedAscending : .orderedDescending }
+        }
+        return .orderedSame
+    }
+
+    // MARK: - Process
+
     /// Runs `claude` in an empty working directory so no project CLAUDE.md is picked up.
     /// Cancelling the calling task terminates the process.
-    private func run(arguments: [String], stdin input: String) async throws -> Data {
+    static func run(_ executable: URL, arguments: [String], stdin input: String) async throws -> Data {
         let process = Process()
         process.executableURL = executable
         process.arguments = arguments
-        process.currentDirectoryURL = Self.workingDirectory()
+        process.currentDirectoryURL = workingDirectory()
 
         let stdinPipe = Pipe(), stdoutPipe = Pipe(), stderrPipe = Pipe()
         process.standardInput = stdinPipe

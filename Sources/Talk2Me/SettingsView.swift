@@ -16,11 +16,17 @@ struct SettingsView: View {
     @State private var testing = false
     @State private var accessibilityGranted = Permissions.accessibilityGranted
     @State private var microphoneGranted = Permissions.microphoneStatus == .granted
+    @State private var launchAtLogin = LaunchAtLogin.isEnabled
 
     private let sample = "um so I was thinking we should uh move the meeting to thursday new paragraph also can you send me the slides"
 
     var body: some View {
         Form {
+            Section("General") {
+                Toggle("Open Talk2Me when I log in", isOn: $launchAtLogin)
+                    .onChange(of: launchAtLogin) { _, enabled in LaunchAtLogin.set(enabled) }
+            }
+
             Section("Shortcuts") {
                 ShortcutPicker(title: "Hold to dictate", key: $settings.holdKey,
                                recordKey: recordKey, cancelRecording: cancelRecording)
@@ -169,7 +175,7 @@ struct SettingsView: View {
 }
 
 /// A shortcut key choice: a preset from the menu, or any key recorded by pressing it.
-private struct ShortcutPicker: View {
+struct ShortcutPicker: View {
     let title: String
     @Binding var key: ShortcutKey
     let recordKey: (@escaping (ShortcutKey?) -> Void) -> Void
