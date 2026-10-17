@@ -10,6 +10,9 @@ final class AppSettings: ObservableObject {
         static let locale = "dictationLocale"
         static let timeout = "cleanupTimeoutSeconds"
         static let suppressFn = "suppressFnKey"
+        static let holdKeyCode = "holdKeyCode"
+        static let handsFreeEnabled = "handsFreeEnabled"
+        static let handsFreeKeyCode = "handsFreeKeyCode"
         static let claudePath = "claudeCodePath"
         static let extraInstructions = "extraInstructions"
         static let onboarded = "hasOpenedSettings"
@@ -22,6 +25,15 @@ final class AppSettings: ObservableObject {
     @Published var localeID: String { didSet { defaults.set(localeID, forKey: Key.locale) } }
     @Published var timeoutSeconds: Double { didSet { defaults.set(timeoutSeconds, forKey: Key.timeout) } }
     @Published var suppressFnKey: Bool { didSet { defaults.set(suppressFnKey, forKey: Key.suppressFn) } }
+    /// The key held to dictate.
+    @Published var holdKey: ShortcutKey { didSet { defaults.set(Int(holdKey.keyCode), forKey: Key.holdKeyCode) } }
+    @Published var handsFreeEnabled: Bool { didSet { defaults.set(handsFreeEnabled, forKey: Key.handsFreeEnabled) } }
+    /// The key double-tapped to start hands-free mode. Usually the same as the hold key.
+    @Published var handsFreeKey: ShortcutKey { didSet { defaults.set(Int(handsFreeKey.keyCode), forKey: Key.handsFreeKeyCode) } }
+
+    var shortcutBindings: [ShortcutKey: ShortcutRoles] {
+        ShortcutBindings.make(hold: holdKey, handsFree: handsFreeEnabled ? handsFreeKey : nil)
+    }
     @Published var claudePath: String { didSet { defaults.set(claudePath, forKey: Key.claudePath) } }
     @Published var extraInstructions: String { didSet { defaults.set(extraInstructions, forKey: Key.extraInstructions) } }
 
@@ -37,6 +49,13 @@ final class AppSettings: ObservableObject {
         localeID = defaults.string(forKey: Key.locale) ?? Locale.current.identifier
         timeoutSeconds = defaults.object(forKey: Key.timeout) as? Double ?? 15
         suppressFnKey = defaults.object(forKey: Key.suppressFn) as? Bool ?? true
+        func storedKey(_ name: String) -> ShortcutKey? {
+            guard let code = defaults.object(forKey: name) as? Int, ShortcutKey.isAllowed(keyCode: Int64(code)) else { return nil }
+            return ShortcutKey(keyCode: Int64(code))
+        }
+        holdKey = storedKey(Key.holdKeyCode) ?? .fn
+        handsFreeEnabled = defaults.object(forKey: Key.handsFreeEnabled) as? Bool ?? true
+        handsFreeKey = storedKey(Key.handsFreeKeyCode) ?? .fn
         claudePath = defaults.string(forKey: Key.claudePath) ?? ""
         extraInstructions = defaults.string(forKey: Key.extraInstructions) ?? ""
     }

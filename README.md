@@ -11,12 +11,25 @@ focused text field. Your clipboard is put back afterwards.
 
 | Action | What happens |
 | --- | --- |
-| Hold Fn, speak, release | Records while held, then transcribes, cleans up and pastes |
-| Tap Fn twice | Hands-free mode: keeps recording; tap Fn again to finish |
+| Hold the dictation key (Fn by default), speak, release | Records while held, then transcribes, cleans up and pastes |
+| Double-tap the hands-free key (Fn by default) | Hands-free mode: keeps recording without holding |
+| Enter, or the key again, in hands-free mode | Finishes and pastes |
 | Escape in hands-free mode | Discards the recording |
-| A quick single tap, or Fn with another key | Ignored, so Fn+Delete and similar shortcuts still work |
+| A quick single tap, or the key used with another key | Ignored, so Fn+Delete and similar shortcuts still work |
 
 The menu-bar icon shows the current state and the result of the last dictation.
+
+### Choosing your keys
+
+In Settings > Shortcuts, pick the key you hold to dictate and the key you double-tap for
+hands-free mode (or turn hands-free off). Choose a preset (Fn, Right Option, Right Command,
+Right Control, Left Option, Left Command) or click **Record a key…** and press any key.
+
+- Left and right modifiers are separate, so Right Option can dictate while Left Option still
+  types special characters.
+- A regular key such as F13 is taken over completely: it won't type in other apps.
+- Escape, Enter and Caps Lock can't be used, because Escape and Enter control hands-free mode
+  and Caps Lock toggles instead of holding.
 
 ## Connecting to Claude
 

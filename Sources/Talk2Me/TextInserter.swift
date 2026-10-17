@@ -71,38 +71,12 @@ final class TextInserter {
 
     private func postCommandV() {
         let source = CGEventSource(stateID: .combinedSessionState)
-        let key = Self.keyCode(producing: "v") ?? CGKeyCode(kVK_ANSI_V)
+        let key = KeyboardLayout.keyCode(producing: "v") ?? CGKeyCode(kVK_ANSI_V)
         let down = CGEvent(keyboardEventSource: source, virtualKey: key, keyDown: true)
         let up = CGEvent(keyboardEventSource: source, virtualKey: key, keyDown: false)
         down?.flags = .maskCommand
         up?.flags = .maskCommand
         down?.post(tap: .cghidEventTap)
         up?.post(tap: .cghidEventTap)
-    }
-
-    /// Finds the key that types `character` in the current keyboard layout, so Cmd+V
-    /// still works on layouts where V is not on the US key position.
-    static func keyCode(producing character: String) -> CGKeyCode? {
-        guard let source = TISCopyCurrentKeyboardLayoutInputSource()?.takeRetainedValue(),
-              let layoutPointer = TISGetInputSourceProperty(source, kTISPropertyUnicodeKeyLayoutData) else {
-            return nil
-        }
-        let layoutData = Unmanaged<CFData>.fromOpaque(layoutPointer).takeUnretainedValue() as Data
-        return layoutData.withUnsafeBytes { raw -> CGKeyCode? in
-            guard let layout = raw.baseAddress?.assumingMemoryBound(to: UCKeyboardLayout.self) else { return nil }
-            for code in 0..<128 {
-                var deadKeyState: UInt32 = 0
-                var chars = [UniChar](repeating: 0, count: 4)
-                var length = 0
-                let status = UCKeyTranslate(
-                    layout, UInt16(code), UInt16(kUCKeyActionDown), 0, UInt32(LMGetKbdType()),
-                    OptionBits(kUCKeyTranslateNoDeadKeysBit), &deadKeyState, chars.count, &length, &chars
-                )
-                if status == noErr, length > 0, String(utf16CodeUnits: chars, count: length) == character {
-                    return CGKeyCode(code)
-                }
-            }
-            return nil
-        }
     }
 }

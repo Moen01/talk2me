@@ -2,7 +2,7 @@ import AVFAudio
 import Foundation
 import Talk2MeCore
 
-/// Runs one dictation at a time: Fn → record → on-device transcript → Claude cleanup → paste.
+/// Runs one dictation at a time: hold key → record → on-device transcript → Claude cleanup → paste.
 @MainActor
 final class DictationController {
     enum Phase: Equatable {
@@ -12,44 +12,53 @@ final class DictationController {
     private(set) var phase: Phase = .idle { didSet { onChange?() } }
     private(set) var isHandsFree = false { didSet { onChange?() } }
     private(set) var lastResult = "No dictation yet." { didSet { onChange?() } }
-    private(set) var readiness = "Preparing on-device dictation…" { didSet { onChange?() } }
+    private var prepareError: String? { didSet { onChange?() } }
     var onChange: (() -> Void)?
+
+    var holdKeyName: String { KeyboardLayout.name(of: settings.holdKey) }
+
+    var readiness: String {
+        if let prepareError { return "Dictation unavailable: \(prepareError)" }
+        guard let prepared else { return "Preparing on-device dictation…" }
+        return "Ready: hold \(holdKeyName) to dictate (\(prepared.locale.identifier))."
+    }
 
     private let settings: AppSettings
     private let capture = AudioCapture()
     private let inserter = TextInserter()
     private var machine = HotkeyStateMachine()
-    private var prepared: (localeID: String, locale: Locale, format: AVAudioFormat)?
+    private var prepared: (localeID: String, locale: Locale, format: AVAudioFormat)? { didSet { onChange?() } }
     private var current: (session: DictationSession, started: Task<Error?, Never>)?
     private var cachedAPIKey: String?
 
-    /// Audio after Fn is released, so the last word is not clipped.
+    /// Audio after the hold key is released, so the last word is not clipped.
     private let releaseTail: Duration = .milliseconds(150)
 
     init(settings: AppSettings) {
         self.settings = settings
     }
 
-    /// Key presses matter only while Fn is held or hands-free mode is on.
+    /// Key presses matter only while a shortcut key is down or hands-free mode is on.
     var wantsKeyEvents: Bool {
         switch machine.state {
-        case .holding, .handsFree: true
-        default: false
+        case .holding, .tapping, .handsFree: true
+        case .idle, .awaitingRelease: false
         }
     }
+
+    var handsFreeKeyName: String { KeyboardLayout.name(of: settings.handsFreeKey) }
 
     // MARK: - Setup
 
     func prepareDictation() async {
         let id = settings.localeID
-        readiness = "Preparing on-device dictation (\(id))…"
+        prepared = nil
+        prepareError = nil
         do {
             let (locale, format) = try await OnDeviceDictation.prepare(locale: Locale(identifier: id))
             prepared = (id, locale, format)
-            readiness = "Ready: hold Fn to dictate (\(locale.identifier))."
         } catch {
-            prepared = nil
-            readiness = "Dictation unavailable: \(error.localizedDescription)"
+            prepareError = error.localizedDescription
         }
     }
 
@@ -59,17 +68,26 @@ final class DictationController {
 
     // MARK: - Hotkey input
 
-    func fnChanged(down: Bool) {
+    func shortcutChanged(_ roles: ShortcutRoles, down: Bool) {
         let now = ProcessInfo.processInfo.systemUptime
-        perform(down ? machine.fnDown(at: now) : machine.fnUp(at: now))
+        perform(down ? machine.shortcutDown(roles, at: now) : machine.shortcutUp(roles, at: now))
     }
 
-    /// Returns true when the key was used (Escape cancelling hands-free) and should be swallowed.
+    /// The user picked different shortcuts: drop any recording tied to the old ones.
+    func shortcutsWereReplaced() {
+        if phase == .recording { cancelRecording() }
+        machine.reset()
+        isHandsFree = false
+        onChange?()
+    }
+
+    /// Returns true when the key was used (Enter finishing or Escape discarding hands-free)
+    /// and should not reach the app being typed in.
     func keyDown(_ keyCode: Int64) -> Bool {
         let wasHandsFree = machine.state == .handsFree
         let action = machine.otherKeyDown(keyCode, at: ProcessInfo.processInfo.systemUptime)
         perform(action)
-        return wasHandsFree && action == .cancelRecording
+        return wasHandsFree && action != nil
     }
 
     private func perform(_ action: HotkeyStateMachine.Action?) {

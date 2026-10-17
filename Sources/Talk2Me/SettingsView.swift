@@ -5,6 +5,8 @@ import Talk2MeCore
 struct SettingsView: View {
     @ObservedObject var settings: AppSettings
     let controller: DictationController
+    let recordKey: (@escaping (ShortcutKey?) -> Void) -> Void
+    let cancelRecording: () -> Void
     let languageChanged: () -> Void
 
     @State private var apiKeyDraft = ""
@@ -19,6 +21,26 @@ struct SettingsView: View {
 
     var body: some View {
         Form {
+            Section("Shortcuts") {
+                ShortcutPicker(title: "Hold to dictate", key: $settings.holdKey,
+                               recordKey: recordKey, cancelRecording: cancelRecording)
+                Toggle("Hands-free mode", isOn: $settings.handsFreeEnabled)
+                if settings.handsFreeEnabled {
+                    ShortcutPicker(title: "Double-tap for hands-free", key: $settings.handsFreeKey,
+                                   recordKey: recordKey, cancelRecording: cancelRecording)
+                    Text("For longer dictation. Press Enter to finish and paste, or Esc to discard.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                if settings.holdKey.isFn || (settings.handsFreeEnabled && settings.handsFreeKey.isFn) {
+                    Toggle("Hide Fn from other apps (stops the emoji picker opening)", isOn: $settings.suppressFnKey)
+                    Button("Open Keyboard settings to set \"Press globe key\" to \"Do Nothing\"") {
+                        Permissions.openKeyboardSettings()
+                    }
+                    .buttonStyle(.link)
+                }
+            }
+
             Section("Cleanup with Claude") {
                 Picker("Backend", selection: $settings.backend) {
                     ForEach(CleanupBackendKind.allCases) { Text($0.displayName).tag($0) }
@@ -80,11 +102,6 @@ struct SettingsView: View {
                     }
                 }
                 .onChange(of: settings.localeID) { languageChanged() }
-                Toggle("Hide Fn from other apps (stops the emoji picker opening)", isOn: $settings.suppressFnKey)
-                Button("Open Keyboard settings to set \"Press globe key\" to \"Do Nothing\"") {
-                    Permissions.openKeyboardSettings()
-                }
-                .buttonStyle(.link)
             }
 
             Section("Try it") {
@@ -98,7 +115,7 @@ struct SettingsView: View {
             }
 
             Section("Permissions") {
-                permissionRow("Accessibility (Fn key and pasting)", granted: accessibilityGranted) {
+                permissionRow("Accessibility (shortcut keys and pasting)", granted: accessibilityGranted) {
                     Permissions.promptForAccessibility()
                     Permissions.openAccessibilitySettings()
                 }
@@ -148,5 +165,60 @@ struct SettingsView: View {
         testOutput = outcome.cleaned
             ? String(format: "%.1f s: ", seconds) + outcome.text
             : "Failed: \(outcome.failure ?? "unknown error")"
+    }
+}
+
+/// A shortcut key choice: a preset from the menu, or any key recorded by pressing it.
+private struct ShortcutPicker: View {
+    let title: String
+    @Binding var key: ShortcutKey
+    let recordKey: (@escaping (ShortcutKey?) -> Void) -> Void
+    let cancelRecording: () -> Void
+
+    @State private var recording = false
+    @State private var updated = false
+
+    private var options: [ShortcutKey] {
+        ShortcutKey.presets.contains(key) ? ShortcutKey.presets : ShortcutKey.presets + [key]
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack {
+                Picker(title, selection: $key) {
+                    ForEach(options, id: \.self) { option in
+                        Text(KeyboardLayout.name(of: option)).tag(option)
+                    }
+                }
+                Button(recording ? "Cancel" : "Record a key…") {
+                    if recording {
+                        cancelRecording()
+                        return
+                    }
+                    updated = false
+                    recording = true
+                    recordKey { captured in
+                        recording = false
+                        guard let captured else { return }
+                        key = captured
+                        updated = true
+                    }
+                }
+            }
+            if recording {
+                Text("Press the key you want to use… (Esc cancels)")
+                    .font(.caption)
+                    .foregroundStyle(.orange)
+            } else if updated {
+                Text("Shortcut updated.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            if !key.isModifier {
+                Text("\(KeyboardLayout.name(of: key)) won't type anything in other apps while Talk2Me is running.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
     }
 }
