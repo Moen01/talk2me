@@ -25,6 +25,7 @@ struct SettingsView: View {
             Section("General") {
                 Toggle("Open Talk2Me when I log in", isOn: $launchAtLogin)
                     .onChange(of: launchAtLogin) { _, enabled in LaunchAtLogin.set(enabled) }
+                UpdateRow()
             }
 
             Section("Shortcuts") {
@@ -175,6 +176,52 @@ struct SettingsView: View {
 }
 
 /// A shortcut key choice: a preset from the menu, or any key recorded by pressing it.
+/// The installed version and a button that asks GitHub whether a newer release exists.
+struct UpdateRow: View {
+    private let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "dev"
+    @State private var checking = false
+    @State private var outcome: Result<UpdateChecker.Result, Error>?
+
+    var body: some View {
+        LabeledContent("Version \(version)") {
+            HStack {
+                if case .success(.available(let latest, let page)) = outcome {
+                    Button("Update to \(latest)") { NSWorkspace.shared.open(page) }
+                        .buttonStyle(.borderedProminent)
+                }
+                Button(checking ? "Checking…" : "Check for Updates") {
+                    Task { await check() }
+                }
+                .disabled(checking)
+            }
+        }
+        // Checks each time Settings opens, so a waiting update shows without a click.
+        .task { await check() }
+        switch outcome {
+        case .success(.available):
+            EmptyView()
+        case .success(.upToDate):
+            Text("You have the latest version.").foregroundStyle(.secondary)
+        case .failure(let error):
+            Text("Could not check for updates: \(error.localizedDescription)")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        case nil:
+            EmptyView()
+        }
+    }
+
+    private func check() async {
+        checking = true
+        defer { checking = false }
+        do {
+            outcome = .success(try await UpdateChecker.check(currentVersion: version))
+        } catch {
+            outcome = .failure(error)
+        }
+    }
+}
+
 struct ShortcutPicker: View {
     let title: String
     @Binding var key: ShortcutKey
