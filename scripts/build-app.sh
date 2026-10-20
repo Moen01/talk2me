@@ -17,6 +17,10 @@ rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp "$BIN" "$APP/Contents/MacOS/Talk2Me"
 cp Resources/Info.plist "$APP/Contents/Info.plist"
+# Release builds stamp their version here; the update check compares against it.
+if [[ -n "${VERSION:-}" ]]; then
+  plutil -replace CFBundleShortVersionString -string "$VERSION" "$APP/Contents/Info.plist"
+fi
 cp Resources/AppIcon.icns "$APP/Contents/Resources/AppIcon.icns"
 
 codesign --force --options runtime \
