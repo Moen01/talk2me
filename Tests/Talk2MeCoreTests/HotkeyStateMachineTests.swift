@@ -100,6 +100,23 @@ struct HotkeyStateMachineTests {
         #expect(machine.state == .tapping(since: 12.0))
     }
 
+    @Test func releasingTheOtherKeyDoesNotEndAHold() {
+        var machine = HotkeyStateMachine()
+        #expect(machine.shortcutDown(.hold, at: 10.0) == .startRecording)
+        #expect(machine.shortcutDown(.handsFree, at: 10.5) == nil)
+        #expect(machine.shortcutUp(.handsFree, at: 10.6) == nil)
+        #expect(machine.state == .holding(since: 10.0, roles: .hold))
+        #expect(machine.shortcutUp(.hold, at: 12.0) == .stopRecording)
+    }
+
+    @Test func releasingTheHoldKeyIsNotAHandsFreeTap() {
+        var machine = HotkeyStateMachine()
+        #expect(machine.shortcutDown(.handsFree, at: 10.0) == nil)
+        #expect(machine.shortcutDown(.hold, at: 10.05) == nil)
+        #expect(machine.shortcutUp(.hold, at: 10.1) == nil)
+        #expect(machine.state == .tapping(since: 10.0))
+    }
+
     @Test func handsFreeKeyUsedAsModifierIsNotATap() {
         var machine = HotkeyStateMachine()
         _ = machine.shortcutDown(.handsFree, at: 10.0)

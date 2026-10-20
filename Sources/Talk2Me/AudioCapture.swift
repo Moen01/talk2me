@@ -1,3 +1,4 @@
+import Accelerate
 import AVFAudio
 
 enum AudioCaptureError: Error, LocalizedError {
@@ -30,5 +31,15 @@ final class AudioCapture {
         engine.inputNode.removeTap(onBus: 0)
         engine.stop()
         self.engine = nil
+    }
+
+    /// Loudness of a buffer from 0 (silence) to 1 (loud speech), for the level meter.
+    static func level(of buffer: AVAudioPCMBuffer) -> Float {
+        guard let samples = buffer.floatChannelData?[0], buffer.frameLength > 0 else { return 0 }
+        var rms: Float = 0
+        vDSP_rmsqv(samples, 1, &rms, vDSP_Length(buffer.frameLength))
+        // Speech sits roughly between -50 dB (quiet) and -10 dB (loud); map that range to 0...1.
+        let decibels = 20 * log10(max(rms, 1e-7))
+        return min(max((decibels + 50) / 40, 0), 1)
     }
 }

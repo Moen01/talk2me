@@ -8,6 +8,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let hotkeys = HotkeyMonitor()
     private var controller: DictationController!
     private var statusBar: StatusBarController!
+    private let indicator = RecordingIndicator()
     private var settingsWindow: NSWindow?
     private var onboardingWindow: NSWindow?
     private var tapRetryTimer: Timer?
@@ -20,7 +21,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             openSetupGuide: { [weak self] in self?.showOnboarding() },
             openAbout: { [weak self] in self?.showAbout() }
         ))
-        controller.onChange = { [weak self] in self?.statusBar.refresh() }
+        controller.onChange = { [weak self] in
+            guard let self else { return }
+            self.statusBar.refresh()
+            self.indicator.update(phase: self.controller.phase, isHandsFree: self.controller.isHandsFree)
+        }
+        controller.onLevel = { [weak self] level in self?.indicator.push(level: level) }
 
         if settings.backend == .apiKey {
             controller.updateAPIKeyCache(KeychainStore.read())
@@ -105,6 +111,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             window.styleMask = [.titled, .closable]
             window.isReleasedWhenClosed = false
             window.center()
+            NotificationCenter.default.addObserver(forName: NSWindow.willCloseNotification, object: window, queue: .main) { [weak self] _ in
+                // Otherwise a "Record a key…" left waiting takes the next key typed in any app.
+                MainActor.assumeIsolated { self?.hotkeys.cancelCapture() }
+            }
             settingsWindow = window
         }
         NSApp.activate()
@@ -130,7 +140,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             window.center()
             NotificationCenter.default.addObserver(forName: NSWindow.willCloseNotification, object: window, queue: .main) { [weak self] _ in
                 // Closing the guide counts as done; it stays available from the menu.
-                MainActor.assumeIsolated { self?.settings.hasCompletedOnboarding = true }
+                MainActor.assumeIsolated {
+                    self?.settings.hasCompletedOnboarding = true
+                    self?.hotkeys.cancelCapture()
+                }
             }
             onboardingWindow = window
         }

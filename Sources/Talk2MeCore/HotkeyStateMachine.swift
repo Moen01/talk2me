@@ -63,6 +63,8 @@ public struct HotkeyStateMachine: Sendable {
     public mutating func shortcutUp(_ roles: ShortcutRoles, at time: TimeInterval) -> Action? {
         switch state {
         case .holding(let since, let heldRoles):
+            // With separate hold and hands-free keys, only the held key's release ends the hold.
+            guard roles == heldRoles else { return nil }
             guard time - since < tapThreshold else {
                 state = .idle
                 lastTapAt = nil
@@ -78,6 +80,8 @@ public struct HotkeyStateMachine: Sendable {
             lastTapAt = heldRoles.contains(.handsFree) ? time : nil
             return .cancelRecording
         case .tapping(let since):
+            // Only a hands-free-only key starts tapping, so any other key's release is not this tap.
+            guard roles == .handsFree else { return nil }
             state = .idle
             lastTapAt = time - since < tapThreshold ? time : nil
             return nil

@@ -1,3 +1,4 @@
+import AVFAudio
 import Foundation
 import Talk2MeCore
 
@@ -5,13 +6,18 @@ import Talk2MeCore
 //
 //   talk2me-bench cleanup [--backend claude-code|api] [--model opus|sonnet|haiku] [--runs N] [text]
 //   talk2me-bench transcribe <audio-file> [--locale nb_NO]
+//   talk2me-bench live <audio-file>|none [--paced] [--locale nb_NO]
 //
 // The API backend reads ANTHROPIC_API_KEY from the environment.
+
+// Writing to a claude process that already exited must fail with an error, not end the run.
+signal(SIGPIPE, SIG_IGN)
 
 let usage = """
 usage:
   talk2me-bench cleanup [--backend claude-code|api] [--model opus|sonnet|haiku] [--runs N] [text]
   talk2me-bench transcribe <audio-file> [--locale nb_NO]
+  talk2me-bench live <audio-file>|none [--paced] [--locale nb_NO]
 """
 
 let sampleTranscript = "um so I was thinking that we should uh move the meeting to thursday instead of you know wednesday because the the client can't make it new paragraph also can you send me the slides"
@@ -78,6 +84,40 @@ case "transcribe":
         print(text)
     } catch {
         fail("transcription failed: \(error.localizedDescription)")
+    }
+
+case "live":
+    // Feeds a file through DictationSession in microphone-sized buffers, like the app does while recording.
+    let localeID = option("--locale") ?? Locale.current.identifier
+    // Real time, like a microphone: the analyzer starts while audio is still arriving.
+    let paced = arguments.contains("--paced")
+    arguments.removeAll { $0 == "--paced" }
+    guard let path = arguments.first else { fail(usage) }
+    do {
+        let clock = ContinuousClock()
+        let start = clock.now
+        func step(_ name: String) { print("\(name) at \(clock.now - start)") }
+        let (locale, format) = try await OnDeviceDictation.prepare(locale: Locale(identifier: localeID))
+        step("prepared \(locale.identifier) \(format)")
+        let session = DictationSession(locale: locale, format: format)
+        let started = Task { try await session.start() }
+        // "none" sends no audio at all, like a microphone that never delivered a buffer.
+        if path != "none" {
+            let file = try AVAudioFile(forReading: URL(fileURLWithPath: path))
+            while let buffer = AVAudioPCMBuffer(pcmFormat: file.processingFormat, frameCapacity: 4096),
+                  (try? file.read(into: buffer)) != nil, buffer.frameLength > 0 {
+                session.append(buffer)
+                if paced { try await Task.sleep(for: .seconds(Double(buffer.frameLength) / file.processingFormat.sampleRate)) }
+            }
+        }
+        step("appended audio")
+        try await started.value
+        step("analyzer started")
+        let text = try await session.finish()
+        step("finished")
+        print(text)
+    } catch {
+        fail("live transcription failed: \(error.localizedDescription)")
     }
 
 default:

@@ -16,6 +16,8 @@ final class DictationController: ObservableObject {
     private var prepareError: String? { didSet { changed() } }
     /// For the menu bar; SwiftUI views observe the controller instead.
     var onChange: (() -> Void)?
+    /// Microphone loudness (0...1) while recording, on the main thread.
+    var onLevel: ((Float) -> Void)?
 
     private func changed() {
         objectWillChange.send()
@@ -40,6 +42,8 @@ final class DictationController: ObservableObject {
 
     /// Audio after the hold key is released, so the last word is not clipped.
     private let releaseTail: Duration = .milliseconds(150)
+    /// Finishing normally takes well under a second, even after a long hands-free dictation.
+    private let transcriptionTimeout: Duration = .seconds(30)
 
     init(settings: AppSettings) {
         self.settings = settings
@@ -97,14 +101,19 @@ final class DictationController: ObservableObject {
         return wasHandsFree && action != nil
     }
 
+    /// Called from the event tap, which macOS turns off if it answers slowly and which delays
+    /// every key press until it returns. The state machine has already decided; starting the
+    /// microphone and updating the UI wait for the next main-loop turn, in order.
     private func perform(_ action: HotkeyStateMachine.Action?) {
-        switch action {
-        case .startRecording: startRecording()
-        case .stopRecording: stopRecording()
-        case .cancelRecording: cancelRecording()
-        case nil: break
+        DispatchQueue.main.async { [self] in
+            switch action {
+            case .startRecording: startRecording()
+            case .stopRecording: stopRecording()
+            case .cancelRecording: cancelRecording()
+            case nil: break
+            }
+            isHandsFree = machine.state == .handsFree
         }
-        isHandsFree = machine.state == .handsFree
     }
 
     // MARK: - Recording
@@ -123,7 +132,11 @@ final class DictationController: ObservableObject {
         }
         let session = DictationSession(locale: prepared.locale, format: prepared.format)
         do {
-            try capture.start { buffer in session.append(buffer) }
+            try capture.start { [weak self] buffer in
+                session.append(buffer)
+                let level = AudioCapture.level(of: buffer)
+                DispatchQueue.main.async { self?.onLevel?(level) }
+            }
         } catch {
             lastResult = "Microphone error: \(error.localizedDescription)"
             machine.reset()
@@ -139,7 +152,11 @@ final class DictationController: ObservableObject {
     private func cancelRecording() {
         capture.stop()
         if let current {
-            Task { await current.session.cancel() }
+            // Cancelling before the analyzer has started would race its start.
+            Task {
+                _ = await current.started.value
+                await current.session.cancel()
+            }
         }
         current = nil
         if phase == .recording { phase = .idle }
@@ -147,7 +164,8 @@ final class DictationController: ObservableObject {
 
     private func stopRecording() {
         guard let current else {
-            phase = .idle
+            // The start was refused (e.g. the previous dictation is still being cleaned up): leave that phase alone.
+            if phase == .recording { phase = .idle }
             return
         }
         self.current = nil
@@ -159,6 +177,13 @@ final class DictationController: ObservableObject {
         try? await Task.sleep(for: releaseTail)
         capture.stop()
 
+        // A stuck analyzer would block every later dictation; cancelling it makes finish() return.
+        let watchdog = Task {
+            try await Task.sleep(for: transcriptionTimeout)
+            await session.cancel()
+        }
+        defer { watchdog.cancel() }
+
         if let error = await started.value {
             lastResult = "Transcription could not start: \(error.localizedDescription)"
             phase = .idle
@@ -169,6 +194,13 @@ final class DictationController: ObservableObject {
             raw = try await session.finish()
         } catch {
             lastResult = "Transcription failed: \(error.localizedDescription)"
+            phase = .idle
+            return
+        }
+        guard session.receivedAudio else {
+            lastResult = Permissions.microphoneStatus == .granted
+                ? "No sound from the microphone. Hold the key a little longer, or check the input device."
+                : "No microphone access. Allow Talk2Me in System Settings > Privacy & Security > Microphone."
             phase = .idle
             return
         }

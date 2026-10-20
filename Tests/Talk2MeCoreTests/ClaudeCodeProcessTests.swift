@@ -43,4 +43,27 @@ struct ClaudeCodeProcessTests {
         try await Task.sleep(for: .seconds(3))
         #expect(!FileManager.default.fileExists(atPath: dir.appendingPathComponent("finished").path))
     }
+
+    @Test func timeoutReturnsWhenClaudeIgnoresSIGTERM() async throws {
+        // The background sleep inherits the pipes and keeps them open after the script is killed.
+        let (script, dir) = try fakeClaude("trap '' TERM\nsleep 6 &\nsleep 6\n")
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let clock = ContinuousClock()
+        let start = clock.now
+        let outcome = await CleanupRouter.run(
+            transcript: "raw", backend: ClaudeCodeBackend(executable: script),
+            model: .haiku, instructions: "", timeout: .milliseconds(300))
+        #expect(outcome.text == "raw")
+        #expect(clock.now - start < .seconds(4))
+    }
+
+    @Test func pathFindsToolsNextToClaudeFirst() {
+        let env = ClaudeCodeBackend.environment(
+            for: URL(fileURLWithPath: "/opt/nvm/bin/claude"), base: ["PATH": "/usr/bin:/bin", "HOME": "/h"])
+        let path = env["PATH"]?.split(separator: ":").map(String.init) ?? []
+        #expect(path.first == "/opt/nvm/bin")
+        #expect(path.contains("/opt/homebrew/bin"))
+        #expect(path.suffix(2) == ["/usr/bin", "/bin"])
+        #expect(env["HOME"] == "/h")
+    }
 }
