@@ -60,8 +60,7 @@ final class StatusBarController: NSObject {
     }
 
     @objc private func openAccessibility() {
-        Permissions.promptForAccessibility()
-        Permissions.openAccessibilitySettings()
+        Permissions.requestAccessibility()
     }
 
     @objc private func showSettings() { actions.openSettings() }
