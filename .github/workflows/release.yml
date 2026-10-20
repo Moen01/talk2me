@@ -1,0 +1,51 @@
+# Every push to main that changes more than docs is tested, built and published as a new
+# GitHub release, so the download links and the in-app update check always get the newest build.
+name: Release
+
+on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - "**.md"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+# Two quick pushes must not both pick the same next version.
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    # Talk2Me needs macOS 26 and Swift 6.2 (Xcode 26).
+    runs-on: macos-26
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Toolchain
+        run: swift --version
+
+      - name: Test
+        run: swift test
+
+      - name: Pick version
+        id: version
+        run: echo "version=$(scripts/next-version.sh)" >> "$GITHUB_OUTPUT"
+
+      - name: Package
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: scripts/package-release.sh
+
+      - name: Publish
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          gh release create "v$VERSION" dist/Talk2Me.zip dist/Talk2Me.dmg dist/SHA256SUMS \
+            --title "Talk2Me $VERSION" \
+            --target "$GITHUB_SHA" \
+            --generate-notes

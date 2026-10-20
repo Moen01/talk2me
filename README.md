@@ -11,8 +11,10 @@ focused text field. Your clipboard is put back afterwards.
 
 Requires macOS 26 or later on an Apple silicon Mac.
 
-1. Download **Talk2Me-x.y.z.dmg** (or the .zip) from the
-   [latest release](https://github.com/Moen01/talk2me/releases/latest).
+1. Download **[Talk2Me.zip](https://github.com/Moen01/talk2me/releases/latest/download/Talk2Me.zip)**
+   (or the [disk image](https://github.com/Moen01/talk2me/releases/latest/download/Talk2Me.dmg)).
+   These links always give the newest version; see all versions on the
+   [releases page](https://github.com/Moen01/talk2me/releases).
 2. Open the disk image and drag **Talk2Me** to **Applications**.
 3. Open Talk2Me. Because this build is not notarized by Apple yet, macOS blocks it the first
    time: click **Done**, then open **System Settings > Privacy & Security**, scroll down to
@@ -87,11 +89,22 @@ or set System Settings > Keyboard > "Press globe key" to "Do Nothing".
 
 ### Making a release
 
+Every push to `main` makes a release: `.github/workflows/release.yml` runs the tests, builds the
+app and publishes `Talk2Me.zip`, `Talk2Me.dmg` and `SHA256SUMS` as a new GitHub release.
+Changes to Markdown files only do not make a release.
+
+The version goes up by one each time (0.1.0, 0.1.1, 0.1.2, …). To jump, for example to 0.2.0, set
+`CFBundleShortVersionString` in `Resources/Info.plist` to that version in the same push.
+`scripts/next-version.sh` prints the version the next release will get.
+
+To build the same files locally:
+
 ```sh
-./scripts/package-release.sh   # writes dist/Talk2Me-<version>.zip, .dmg and SHA256SUMS
+./scripts/package-release.sh   # writes dist/Talk2Me.zip, Talk2Me.dmg and SHA256SUMS
 ```
 
-The version comes from `CFBundleShortVersionString` in `Resources/Info.plist`.
+Settings shows a blue "Update to x.y.z" button when GitHub has a newer release. The check reads
+the public GitHub API, so it only works while the repository is public.
 `scripts/make-icon.sh` redraws `Resources/AppIcon.icns`.
 
 The build is ad-hoc signed, so macOS asks for Accessibility access again after each rebuild.
