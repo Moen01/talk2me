@@ -1,6 +1,7 @@
 @preconcurrency import AVFAudio
 import Foundation
 import Speech
+import Synchronization
 
 public enum TranscriptionError: Error, LocalizedError {
     case unsupportedLocale(String)
@@ -85,6 +86,10 @@ public final class DictationSession: @unchecked Sendable {
     private var collector: Task<String, Error>?
     // Only touched from the audio thread that calls `append`.
     private var converter: AVAudioConverter?
+    private let audioArrived = Mutex(false)
+
+    /// False when the microphone delivered nothing, e.g. without Microphone access.
+    public var receivedAudio: Bool { audioArrived.withLock { $0 } }
 
     public init(locale: Locale, format: AVAudioFormat) {
         self.transcriber = OnDeviceDictation.makeTranscriber(locale: locale)
@@ -102,12 +107,19 @@ public final class DictationSession: @unchecked Sendable {
     /// Called on the audio thread for every microphone buffer.
     public func append(_ buffer: AVAudioPCMBuffer) {
         guard let converted = convert(buffer) else { return }
+        audioArrived.withLock { $0 = true }
         continuation.yield(AnalyzerInput(buffer: converted))
     }
 
     /// Ends the audio and waits for the final transcript.
     public func finish() async throws -> String {
         continuation.finish()
+        // The analyzer never finishes an input that had no audio at all, and there is nothing to transcribe.
+        guard receivedAudio else {
+            await analyzer.cancelAndFinishNow()
+            collector?.cancel()
+            return ""
+        }
         try await analyzer.finalizeAndFinishThroughEndOfInput()
         return try await collector?.value ?? ""
     }

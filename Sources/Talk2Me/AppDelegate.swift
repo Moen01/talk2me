@@ -111,6 +111,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             window.styleMask = [.titled, .closable]
             window.isReleasedWhenClosed = false
             window.center()
+            NotificationCenter.default.addObserver(forName: NSWindow.willCloseNotification, object: window, queue: .main) { [weak self] _ in
+                // Otherwise a "Record a key…" left waiting takes the next key typed in any app.
+                MainActor.assumeIsolated { self?.hotkeys.cancelCapture() }
+            }
             settingsWindow = window
         }
         NSApp.activate()
@@ -136,7 +140,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             window.center()
             NotificationCenter.default.addObserver(forName: NSWindow.willCloseNotification, object: window, queue: .main) { [weak self] _ in
                 // Closing the guide counts as done; it stays available from the menu.
-                MainActor.assumeIsolated { self?.settings.hasCompletedOnboarding = true }
+                MainActor.assumeIsolated {
+                    self?.settings.hasCompletedOnboarding = true
+                    self?.hotkeys.cancelCapture()
+                }
             }
             onboardingWindow = window
         }

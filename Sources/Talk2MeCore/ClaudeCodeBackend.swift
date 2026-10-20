@@ -146,6 +146,7 @@ public struct ClaudeCodeBackend: CleanupBackend {
         process.executableURL = executable
         process.arguments = arguments
         process.currentDirectoryURL = workingDirectory()
+        process.environment = environment(for: executable)
 
         let stdinPipe = Pipe(), stdoutPipe = Pipe(), stderrPipe = Pipe()
         process.standardInput = stdinPipe
@@ -165,7 +166,9 @@ public struct ClaudeCodeBackend: CleanupBackend {
                     }
                 }
                 process.terminationHandler = { process in
-                    group.notify(queue: .global()) {
+                    DispatchQueue.global().async {
+                        // A child of claude can keep the pipes open after claude exits; don't wait on it forever.
+                        _ = group.wait(timeout: .now() + 1)
                         let (out, err) = collector.values
                         if process.terminationReason == .uncaughtSignal {
                             continuation.resume(throwing: CancellationError())
@@ -181,7 +184,8 @@ public struct ClaudeCodeBackend: CleanupBackend {
                 }
                 do {
                     try process.run()
-                    stdinPipe.fileHandleForWriting.write(Data(input.utf8))
+                    // Throws instead of crashing when claude exits before reading (SIGPIPE is ignored at launch).
+                    try? stdinPipe.fileHandleForWriting.write(contentsOf: Data(input.utf8))
                     try? stdinPipe.fileHandleForWriting.close()
                 } catch {
                     process.terminationHandler = nil
@@ -189,8 +193,28 @@ public struct ClaudeCodeBackend: CleanupBackend {
                 }
             }
         } onCancel: {
-            if process.isRunning { process.terminate() }
+            guard process.isRunning else { return }
+            process.terminate()
+            // SIGTERM can be ignored; the cleanup timeout must still end.
+            let pid = process.processIdentifier
+            DispatchQueue.global().asyncAfter(deadline: .now() + 1) {
+                if process.isRunning { kill(pid, SIGKILL) }
+            }
         }
+    }
+
+    /// An app opened from Finder gets only /usr/bin:/bin:/usr/sbin:/sbin. An npm install of claude
+    /// is a `#!/usr/bin/env node` script, so put claude's own folder (where node lives too) first.
+    static func environment(
+        for executable: URL,
+        base: [String: String] = ProcessInfo.processInfo.environment
+    ) -> [String: String] {
+        let home = FileManager.default.homeDirectoryForCurrentUser.path
+        let preferred = [executable.deletingLastPathComponent().path, "/opt/homebrew/bin", "/usr/local/bin", "\(home)/.local/bin"]
+        let existing = (base["PATH"] ?? "").split(separator: ":").map(String.init)
+        var environment = base
+        environment["PATH"] = (preferred + existing.filter { !preferred.contains($0) }).joined(separator: ":")
+        return environment
     }
 
     static func workingDirectory() -> URL {
