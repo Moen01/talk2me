@@ -16,6 +16,8 @@ final class DictationController: ObservableObject {
     private var prepareError: String? { didSet { changed() } }
     /// For the menu bar; SwiftUI views observe the controller instead.
     var onChange: (() -> Void)?
+    /// Microphone loudness (0...1) while recording, on the main thread.
+    var onLevel: ((Float) -> Void)?
 
     private func changed() {
         objectWillChange.send()
@@ -123,7 +125,11 @@ final class DictationController: ObservableObject {
         }
         let session = DictationSession(locale: prepared.locale, format: prepared.format)
         do {
-            try capture.start { buffer in session.append(buffer) }
+            try capture.start { [weak self] buffer in
+                session.append(buffer)
+                let level = AudioCapture.level(of: buffer)
+                DispatchQueue.main.async { self?.onLevel?(level) }
+            }
         } catch {
             lastResult = "Microphone error: \(error.localizedDescription)"
             machine.reset()

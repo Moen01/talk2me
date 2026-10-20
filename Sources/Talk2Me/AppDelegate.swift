@@ -8,6 +8,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let hotkeys = HotkeyMonitor()
     private var controller: DictationController!
     private var statusBar: StatusBarController!
+    private let indicator = RecordingIndicator()
     private var settingsWindow: NSWindow?
     private var onboardingWindow: NSWindow?
     private var tapRetryTimer: Timer?
@@ -20,7 +21,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             openSetupGuide: { [weak self] in self?.showOnboarding() },
             openAbout: { [weak self] in self?.showAbout() }
         ))
-        controller.onChange = { [weak self] in self?.statusBar.refresh() }
+        controller.onChange = { [weak self] in
+            guard let self else { return }
+            self.statusBar.refresh()
+            self.indicator.update(phase: self.controller.phase, isHandsFree: self.controller.isHandsFree)
+        }
+        controller.onLevel = { [weak self] level in self?.indicator.push(level: level) }
 
         if settings.backend == .apiKey {
             controller.updateAPIKeyCache(KeychainStore.read())
