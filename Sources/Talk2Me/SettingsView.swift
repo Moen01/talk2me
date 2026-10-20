@@ -123,8 +123,7 @@ struct SettingsView: View {
 
             Section("Permissions") {
                 permissionRow("Accessibility (shortcut keys and pasting)", granted: accessibilityGranted) {
-                    Permissions.promptForAccessibility()
-                    Permissions.openAccessibilitySettings()
+                    Permissions.requestAccessibility()
                 }
                 permissionRow("Microphone", granted: microphoneGranted) {
                     Task {
@@ -138,7 +137,9 @@ struct SettingsView: View {
             }
         }
         .formStyle(.grouped)
-        .frame(width: 540)
+        // A grouped Form scrolls and has no height of its own, so without one the window
+        // sized to it can collapse to just its title bar.
+        .frame(width: 540, height: 640)
         .task {
             apiKeySaved = KeychainStore.read() != nil
             languages = await OnDeviceDictation.supportedLocales().sorted { $0.identifier < $1.identifier }
@@ -176,30 +177,40 @@ struct SettingsView: View {
 }
 
 /// A shortcut key choice: a preset from the menu, or any key recorded by pressing it.
-/// The installed version and a button that asks GitHub whether a newer release exists.
+/// The installed version, a button that asks GitHub for a newer release, and a blue button
+/// that installs it.
 struct UpdateRow: View {
     private let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "dev"
     @State private var checking = false
     @State private var outcome: Result<UpdateChecker.Result, Error>?
+    @State private var step: SelfUpdater.Step?
+    @State private var installError: String?
 
     var body: some View {
         LabeledContent("Version \(version)") {
             HStack {
-                if case .success(.available(let latest, let page)) = outcome {
-                    Button("Update to \(latest)") { NSWorkspace.shared.open(page) }
+                if case .success(.available(let update)) = outcome {
+                    Button(installTitle(update)) { Task { await install(update) } }
                         .buttonStyle(.borderedProminent)
+                        .disabled(step != nil)
                 }
                 Button(checking ? "Checking…" : "Check for Updates") {
                     Task { await check() }
                 }
-                .disabled(checking)
+                .disabled(checking || step != nil)
             }
         }
         // Checks each time Settings opens, so a waiting update shows without a click.
         .task { await check() }
         switch outcome {
-        case .success(.available):
-            EmptyView()
+        case .success(.available(let update)):
+            if let installError {
+                HStack {
+                    Text("Could not install: \(installError)").font(.caption).foregroundStyle(.secondary)
+                    Spacer()
+                    Link("Open release page", destination: update.page).font(.caption)
+                }
+            }
         case .success(.upToDate):
             Text("You have the latest version.").foregroundStyle(.secondary)
         case .failure(let error):
@@ -208,6 +219,14 @@ struct UpdateRow: View {
                 .foregroundStyle(.secondary)
         case nil:
             EmptyView()
+        }
+    }
+
+    private func installTitle(_ update: UpdateChecker.Update) -> String {
+        switch step {
+        case .downloading: "Downloading…"
+        case .installing: "Installing…"
+        case nil: "Update to \(update.version)"
         }
     }
 
@@ -220,6 +239,17 @@ struct UpdateRow: View {
             outcome = .failure(error)
         }
     }
+
+    /// On success Talk2Me quits and the new version opens, so only failures come back here.
+    private func install(_ update: UpdateChecker.Update) async {
+        installError = nil
+        defer { step = nil }
+        do {
+            try await SelfUpdater.install(update) { step = $0 }
+        } catch {
+            installError = error.localizedDescription
+        }
+    }
 }
 
 struct ShortcutPicker: View {
@@ -230,6 +260,8 @@ struct ShortcutPicker: View {
 
     @State private var recording = false
     @State private var updated = false
+    // Shortcut keys reach Talk2Me only through the event tap, which needs Accessibility.
+    @State private var trusted = Permissions.accessibilityGranted
 
     private var options: [ShortcutKey] {
         ShortcutKey.presets.contains(key) ? ShortcutKey.presets : ShortcutKey.presets + [key]
@@ -257,8 +289,17 @@ struct ShortcutPicker: View {
                         updated = true
                     }
                 }
+                .disabled(!trusted && !recording)
             }
-            if recording {
+            if !trusted {
+                HStack {
+                    Text("Talk2Me can't see key presses without Accessibility access.")
+                        .font(.caption)
+                        .foregroundStyle(.orange)
+                    Button("Allow Accessibility…") { Permissions.requestAccessibility() }
+                        .controlSize(.small)
+                }
+            } else if recording {
                 Text("Press the key you want to use… (Esc cancels)")
                     .font(.caption)
                     .foregroundStyle(.orange)
@@ -272,6 +313,10 @@ struct ShortcutPicker: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
+        }
+        .onReceive(Permissions.ticks) { _ in
+            let now = Permissions.accessibilityGranted
+            if now != trusted { trusted = now }
         }
     }
 }

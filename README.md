@@ -107,9 +107,22 @@ Settings shows a blue "Update to x.y.z" button when GitHub has a newer release. 
 the public GitHub API, so it only works while the repository is public.
 `scripts/make-icon.sh` redraws `Resources/AppIcon.icns`.
 
-The build is ad-hoc signed, so macOS asks for Accessibility access again after each rebuild.
-For a stable signature, create a code-signing certificate and build with
-`SIGN_IDENTITY="Your Certificate Name" ./scripts/build-app.sh`.
+### Signing
+
+macOS ties Talk2Me's Microphone and Accessibility permissions to its signing certificate, so
+every build is signed with the same self-signed **Talk2Me Signing** certificate. Then the
+permissions survive rebuilds and updates, and the in-app updater only installs a build signed
+with that certificate. It is not an Apple Developer ID, so a downloaded copy still shows
+"Apple could not verify" the first time; updates from inside the app do not.
+
+- Locally the certificate lives in its own keychain in
+  `~/Library/Application Support/Talk2Me Signing/` (with its password and a `.p12` backup), and
+  `scripts/build-app.sh` signs with it. The keychain must be on the search list
+  (`security list-keychains -d user`).
+- The release workflow loads the same `.p12` from the `SIGNING_CERT_P12` and
+  `SIGNING_CERT_PASSWORD` repository secrets, and fails without them.
+- Without the certificate, `build-app.sh` signs ad-hoc, and macOS asks for both permissions
+  again after every rebuild.
 
 ## Languages
 

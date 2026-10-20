@@ -3,9 +3,34 @@ import SwiftUI
 import Talk2MeCore
 
 /// The first-run setup guide: permissions, connecting Claude, choosing a shortcut, and a practice run.
+/// The sidebar shows which steps are done, so you can jump to whatever still needs you.
 struct OnboardingView: View {
-    enum Step: Int, CaseIterable {
-        case welcome, permissions, claude, shortcut, tryIt
+    enum Step: Int, CaseIterable, Identifiable {
+        case welcome, permissions, claude, shortcut, tryIt, ready
+
+        var id: Int { rawValue }
+
+        var title: String {
+            switch self {
+            case .welcome: "Welcome"
+            case .permissions: "Permissions"
+            case .claude: "Connect Claude"
+            case .shortcut: "Shortcut"
+            case .tryIt: "Try it"
+            case .ready: "Ready"
+            }
+        }
+
+        var symbol: String {
+            switch self {
+            case .welcome: "hand.wave"
+            case .permissions: "hand.raised"
+            case .claude: "sparkles"
+            case .shortcut: "keyboard"
+            case .tryIt: "waveform"
+            case .ready: "checkmark.seal"
+            }
+        }
     }
 
     @ObservedObject var settings: AppSettings
@@ -15,56 +40,163 @@ struct OnboardingView: View {
     let finish: () -> Void
 
     @State private var step: Step = .welcome
+    @StateObject private var setup = SetupStatus()
 
     var body: some View {
-        VStack(spacing: 0) {
-            StepDots(current: step.rawValue, count: Step.allCases.count)
-                .padding(.top, 34)
-            Group {
-                switch step {
-                case .welcome: WelcomeStep()
-                case .permissions: PermissionsStep()
-                case .claude: ConnectClaudeStep(settings: settings, controller: controller)
-                case .shortcut: ShortcutStep(settings: settings, recordKey: recordKey, cancelRecording: cancelRecording)
-                case .tryIt: TryItStep(settings: settings, controller: controller)
-                }
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-            .padding(.horizontal, 48)
-            .padding(.top, 20)
-            .transition(.opacity)
-
+        HStack(spacing: 0) {
+            sidebar
             Divider()
-            HStack {
-                if step != .welcome {
-                    Button("Back") { move(-1) }
-                        .controlSize(.large)
+            VStack(spacing: 0) {
+                ScrollView {
+                    Group {
+                        switch step {
+                        case .welcome: WelcomeStep()
+                        case .permissions: PermissionsStep(setup: setup)
+                        case .claude: ConnectClaudeStep(settings: settings, controller: controller, setup: setup)
+                        case .shortcut: ShortcutStep(settings: settings, recordKey: recordKey, cancelRecording: cancelRecording)
+                        case .tryIt: TryItStep(settings: settings, controller: controller, setup: setup)
+                        case .ready: ReadyStep(settings: settings, setup: setup) { step = $0 }
+                        }
+                    }
+                    .padding(32)
+                    .frame(maxWidth: .infinity, alignment: .topLeading)
                 }
-                Spacer()
-                Button(primaryTitle) {
-                    if step == .tryIt { finish() } else { move(1) }
-                }
-                .keyboardShortcut(.defaultAction)
-                .buttonStyle(.borderedProminent)
-                .controlSize(.large)
+                Divider()
+                footer
             }
-            .padding(.horizontal, 24)
-            .padding(.vertical, 16)
         }
-        .frame(width: 640, height: 640)
+        .frame(width: 780, height: 600)
+        .task { await setup.refresh(settings: settings) }
+        .onReceive(Permissions.ticks) { _ in setup.refreshPermissions() }
     }
 
-    private var primaryTitle: String {
-        switch step {
-        case .welcome: "Get Started"
-        case .tryIt: "Finish"
-        default: "Continue"
+    // MARK: Frame
+
+    private var sidebar: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(spacing: 8) {
+                Image(systemName: "waveform")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(.white)
+                    .frame(width: 26, height: 26)
+                    .background(LinearGradient(colors: [.indigo, .purple], startPoint: .topLeading, endPoint: .bottomTrailing),
+                                in: RoundedRectangle(cornerRadius: 7, style: .continuous))
+                Text("Set up Talk2Me").font(.headline)
+            }
+            .padding(.bottom, 14)
+            ForEach(Step.allCases) { item in
+                Button { step = item } label: {
+                    HStack(spacing: 8) {
+                        StepStatusIcon(state: setup.state(of: item, settings: settings), symbol: item.symbol)
+                        Text(item.title)
+                        Spacer()
+                    }
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 7)
+                    .background(RoundedRectangle(cornerRadius: 7).fill(step == item ? Color.accentColor.opacity(0.18) : .clear))
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+            }
+            Spacer()
+            Text("Open this again from the menu-bar icon: Setup Guide…")
+                .font(.caption2)
+                .foregroundStyle(.tertiary)
         }
+        .padding(16)
+        .frame(width: 210)
+        .frame(maxHeight: .infinity)
+        .background(.background.secondary)
+    }
+
+    private var footer: some View {
+        HStack {
+            if step != .welcome {
+                Button("Back") { move(-1) }
+            }
+            Spacer()
+            Button {
+                Task { await setup.refresh(settings: settings) }
+            } label: {
+                Label(setup.checking ? "Checking…" : "Check Again", systemImage: "arrow.clockwise")
+            }
+            .disabled(setup.checking)
+            .help("Check every step again, after you changed something in System Settings or Terminal")
+            if step == .ready {
+                Button("Start Using Talk2Me", action: finish)
+                    .buttonStyle(.borderedProminent)
+                    .keyboardShortcut(.defaultAction)
+            } else {
+                Button("Skip Setup", action: finish)
+                Button(step == .welcome ? "Get Started" : "Next") { move(1) }
+                    .buttonStyle(.borderedProminent)
+                    .keyboardShortcut(.defaultAction)
+            }
+        }
+        .controlSize(.large)
+        .padding(16)
     }
 
     private func move(_ delta: Int) {
         guard let next = Step(rawValue: step.rawValue + delta) else { return }
-        withAnimation(.easeInOut(duration: 0.2)) { step = next }
+        step = next
+    }
+}
+
+// MARK: - Status
+
+/// What is already in place, shared by the sidebar, the steps and the summary.
+@MainActor
+final class SetupStatus: ObservableObject {
+    enum State { case done, attention, optional, none }
+
+    @Published private(set) var microphone = Permissions.microphoneStatus == .granted
+    @Published private(set) var accessibility = Permissions.accessibilityGranted
+    @Published private(set) var claude: ClaudeCodeBackend.Status?
+    @Published private(set) var checking = false
+    // Read once and after a save: the Keychain is too slow to ask on every redraw.
+    @Published var apiKeySaved = KeychainStore.read() != nil
+    @Published var practiced = false
+
+    func refreshPermissions() {
+        let mic = Permissions.microphoneStatus == .granted
+        let ax = Permissions.accessibilityGranted
+        if mic != microphone { microphone = mic }
+        if ax != accessibility { accessibility = ax }
+    }
+
+    func refresh(settings: AppSettings) async {
+        checking = true
+        defer { checking = false }
+        refreshPermissions()
+        apiKeySaved = KeychainStore.read() != nil
+        await refreshClaude(settings: settings)
+    }
+
+    func refreshClaude(settings: AppSettings) async {
+        guard let path = ClaudeCodeBackend.locate(customPath: settings.claudePath) else {
+            claude = nil
+            return
+        }
+        claude = await ClaudeCodeBackend.status(of: path)
+    }
+
+    func claudeReady(_ settings: AppSettings) -> Bool {
+        switch settings.backend {
+        case .off: false
+        case .apiKey: apiKeySaved
+        case .claudeCode: claude.map { $0.loggedIn && $0.supports(settings.model) } ?? false
+        }
+    }
+
+    func state(of step: OnboardingView.Step, settings: AppSettings) -> State {
+        switch step {
+        case .welcome, .ready: .none
+        case .permissions: microphone && accessibility ? .done : .attention
+        case .claude: settings.backend == .off ? .optional : claudeReady(settings) ? .done : .attention
+        case .shortcut: .done
+        case .tryIt: practiced ? .done : .optional
+        }
     }
 }
 
@@ -72,7 +204,7 @@ struct OnboardingView: View {
 
 private struct WelcomeStep: View {
     var body: some View {
-        VStack(spacing: 28) {
+        VStack(alignment: .leading, spacing: 28) {
             StepHeader(symbol: "waveform", title: "Welcome to Talk2Me",
                        subtitle: "Hold a key, speak, and your words appear in any app, cleaned up by Claude.")
             VStack(alignment: .leading, spacing: 18) {
@@ -83,43 +215,46 @@ private struct WelcomeStep: View {
                 FeatureRow(symbol: "text.cursor", title: "Works everywhere",
                            text: "Mail, Slack, Notes, your code editor: anywhere you can type.")
             }
-            .frame(maxWidth: 440)
+            .frame(maxWidth: 460, alignment: .leading)
         }
     }
 }
 
 private struct PermissionsStep: View {
-    @State private var microphone = Permissions.microphoneStatus == .granted
-    @State private var accessibility = Permissions.accessibilityGranted
+    @ObservedObject var setup: SetupStatus
 
     var body: some View {
-        VStack(spacing: 28) {
+        VStack(alignment: .leading, spacing: 24) {
             StepHeader(symbol: "hand.raised", title: "Allow access",
                        subtitle: "Talk2Me needs two permissions. You can change them later in System Settings.")
-            VStack(spacing: 12) {
-                PermissionCard(symbol: "mic", title: "Microphone",
-                               text: "To hear you while you hold your shortcut.",
-                               granted: microphone) {
-                    Task {
-                        if Permissions.microphoneStatus == .undetermined {
-                            microphone = await Permissions.requestMicrophone()
-                        } else {
-                            Permissions.openMicrophoneSettings()
+            VStack(spacing: 10) {
+                SetupRow(ok: setup.microphone, title: "Microphone",
+                         detail: "To hear you while you hold your shortcut.") {
+                    if !setup.microphone {
+                        Button("Allow…") {
+                            Task {
+                                if Permissions.microphoneStatus == .undetermined {
+                                    _ = await Permissions.requestMicrophone()
+                                } else {
+                                    Permissions.openMicrophoneSettings()
+                                }
+                                setup.refreshPermissions()
+                            }
                         }
+                        .buttonStyle(.borderedProminent)
                     }
                 }
-                PermissionCard(symbol: "keyboard", title: "Accessibility",
-                               text: "To notice your shortcut key and type the text into other apps. Turn on Talk2Me in the list that opens.",
-                               granted: accessibility) {
-                    Permissions.promptForAccessibility()
-                    Permissions.openAccessibilitySettings()
+                SetupRow(ok: setup.accessibility, title: "Accessibility",
+                         detail: "To notice your shortcut key and type the text into other apps. Turn on Talk2Me in the list that opens.") {
+                    if !setup.accessibility {
+                        Button("Allow…") {
+                            Permissions.requestAccessibility()
+                        }
+                        .buttonStyle(.borderedProminent)
+                    }
                 }
             }
-            .frame(maxWidth: 480)
-        }
-        .onReceive(Timer.publish(every: 1, on: .main, in: .common).autoconnect()) { _ in
-            microphone = Permissions.microphoneStatus == .granted
-            accessibility = Permissions.accessibilityGranted
+            .frame(maxWidth: 500)
         }
     }
 }
@@ -127,18 +262,17 @@ private struct PermissionsStep: View {
 private struct ConnectClaudeStep: View {
     @ObservedObject var settings: AppSettings
     let controller: DictationController
+    @ObservedObject var setup: SetupStatus
 
-    @State private var status: ClaudeCodeBackend.Status?
     @State private var checking = false
     @State private var apiKeyDraft = ""
-    @State private var apiKeySaved = KeychainStore.read() != nil
     @State private var testResult: (ok: Bool, text: String)?
     @State private var testing = false
 
     private var claudePath: URL? { ClaudeCodeBackend.locate(customPath: settings.claudePath) }
 
     var body: some View {
-        VStack(spacing: 22) {
+        VStack(alignment: .leading, spacing: 22) {
             StepHeader(symbol: "sparkles", title: "Connect Claude",
                        subtitle: "Claude tidies up what you say. Pick how Talk2Me reaches it.")
             Picker("", selection: $settings.backend) {
@@ -192,7 +326,7 @@ private struct ConnectClaudeStep: View {
             if let claudePath {
                 if checking {
                     HStack { ProgressView().controlSize(.small); Text("Checking Claude Code…") }
-                } else if let status, status.loggedIn {
+                } else if let status = setup.claude, status.loggedIn {
                     Label(signedInText(status), systemImage: "checkmark.seal.fill")
                         .foregroundStyle(.green)
                         .font(.headline)
@@ -238,18 +372,18 @@ private struct ConnectClaudeStep: View {
     @ViewBuilder private var apiKeyCard: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack {
-                SecureField(apiKeySaved ? "Saved in your Keychain" : "Paste your key (sk-ant-…)", text: $apiKeyDraft)
+                SecureField(setup.apiKeySaved ? "Saved in your Keychain" : "Paste your key (sk-ant-…)", text: $apiKeyDraft)
                     .textFieldStyle(.roundedBorder)
                 Button("Save") {
                     let key = apiKeyDraft.trimmingCharacters(in: .whitespacesAndNewlines)
                     guard !key.isEmpty, KeychainStore.save(key) else { return }
                     controller.updateAPIKeyCache(key)
                     apiKeyDraft = ""
-                    apiKeySaved = true
+                    setup.apiKeySaved = true
                 }
                 .disabled(apiKeyDraft.isEmpty)
             }
-            if apiKeySaved {
+            if setup.apiKeySaved {
                 Label("Key saved in your Keychain", systemImage: "key.fill")
                     .foregroundStyle(.green)
             }
@@ -271,9 +405,8 @@ private struct ConnectClaudeStep: View {
     }
 
     private func refreshStatus() async {
-        guard let claudePath else { status = nil; return }
         checking = true
-        status = await ClaudeCodeBackend.status(of: claudePath)
+        await setup.refreshClaude(settings: settings)
         checking = false
     }
 
@@ -300,7 +433,7 @@ private struct ShortcutStep: View {
     let cancelRecording: () -> Void
 
     var body: some View {
-        VStack(spacing: 24) {
+        VStack(alignment: .leading, spacing: 24) {
             StepHeader(symbol: "keyboard", title: "Choose your shortcut",
                        subtitle: "Hold it to talk, let go to paste. A key you rarely use on its own works best.")
             KeyCap(name: KeyboardLayout.name(of: settings.holdKey))
@@ -331,13 +464,13 @@ private struct ShortcutStep: View {
 private struct TryItStep: View {
     @ObservedObject var settings: AppSettings
     @ObservedObject var controller: DictationController
+    @ObservedObject var setup: SetupStatus
     @State private var practice = ""
-    @State private var launchAtLogin = LaunchAtLogin.isEnabled
     @FocusState private var focused: Bool
 
     var body: some View {
-        VStack(spacing: 20) {
-            StepHeader(symbol: "checkmark.circle", title: "Try it",
+        VStack(alignment: .leading, spacing: 20) {
+            StepHeader(symbol: "waveform", title: "Try it",
                        subtitle: "Click in the box, hold \(KeyboardLayout.name(of: settings.holdKey)) and say something. Let go to paste.")
             TextEditor(text: $practice)
                 .font(.body)
@@ -361,14 +494,12 @@ private struct TryItStep: View {
                 .foregroundStyle(.secondary)
                 .frame(maxWidth: 480, alignment: .leading)
                 .lineLimit(2)
-            Toggle("Open Talk2Me when I log in", isOn: $launchAtLogin)
-                .onChange(of: launchAtLogin) { _, enabled in LaunchAtLogin.set(enabled) }
-                .frame(maxWidth: 480, alignment: .leading)
-            Text("Talk2Me lives in your menu bar. Click its icon for Settings.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
         }
         .onAppear { focused = true }
+        // Only a dictation that reached the paste step counts, not typing into the box.
+        .onChange(of: controller.phase) { old, new in
+            if old == .inserting, new == .idle { setup.practiced = true }
+        }
     }
 
     private var statusText: String {
@@ -390,7 +521,94 @@ private struct TryItStep: View {
     }
 }
 
+private struct ReadyStep: View {
+    @ObservedObject var settings: AppSettings
+    @ObservedObject var setup: SetupStatus
+    let go: (OnboardingView.Step) -> Void
+    @State private var launchAtLogin = LaunchAtLogin.isEnabled
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 22) {
+            StepHeader(symbol: "checkmark.seal", title: "You're set",
+                       subtitle: "Talk2Me lives in your menu bar. Hold \(KeyboardLayout.name(of: settings.holdKey)) in any app to dictate.")
+            VStack(spacing: 10) {
+                SetupRow(ok: setup.microphone && setup.accessibility, title: "Permissions",
+                         detail: setup.microphone && setup.accessibility
+                             ? "Microphone and Accessibility are allowed."
+                             : "Talk2Me can't hear you or paste until both are allowed.") {
+                    if !(setup.microphone && setup.accessibility) { Button("Fix…") { go(.permissions) } }
+                }
+                SetupRow(ok: settings.backend == .off ? nil : setup.claudeReady(settings), title: "Claude cleanup",
+                         detail: claudeDetail) {
+                    if !setup.claudeReady(settings) { Button(settings.backend == .off ? "Connect…" : "Fix…") { go(.claude) } }
+                }
+                SetupRow(ok: true, title: "Shortcut",
+                         detail: "Hold \(KeyboardLayout.name(of: settings.holdKey)) to dictate." + (settings.handsFreeEnabled
+                             ? " Double-tap \(KeyboardLayout.name(of: settings.handsFreeKey)) for hands-free." : "")) {
+                    Button("Change…") { go(.shortcut) }
+                }
+                SetupRow(ok: setup.practiced ? true : nil, title: "Practice",
+                         detail: setup.practiced ? "You tried a dictation." : "Optional: try one dictation before you start.") {
+                    if !setup.practiced { Button("Try It…") { go(.tryIt) } }
+                }
+            }
+            .frame(maxWidth: 500)
+            Toggle("Open Talk2Me when I log in", isOn: $launchAtLogin)
+                .onChange(of: launchAtLogin) { _, enabled in LaunchAtLogin.set(enabled) }
+        }
+    }
+
+    private var claudeDetail: String {
+        switch settings.backend {
+        case .off: "Off: you get the raw transcript. Optional."
+        case .apiKey: setup.apiKeySaved ? "Using your API key with \(settings.model.displayName)." : "No API key saved yet."
+        case .claudeCode:
+            setup.claudeReady(settings)
+                ? "Using your Claude subscription with \(settings.model.displayName)."
+                : "Claude Code is not installed, not signed in, or too old for \(settings.model.displayName)."
+        }
+    }
+}
+
 // MARK: - Building blocks
+
+/// One thing to have in place: done (true), needs you (false) or optional (nil), with its fix beside it.
+private struct SetupRow<Actions: View>: View {
+    let ok: Bool?
+    let title: String
+    let detail: String
+    @ViewBuilder var actions: Actions
+
+    var body: some View {
+        HStack(alignment: .center, spacing: 12) {
+            StepStatusIcon(state: ok == true ? .done : ok == false ? .attention : .optional, symbol: "circle")
+                .font(.title3)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title).font(.headline)
+                Text(detail).font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+            }
+            Spacer(minLength: 8)
+            actions
+        }
+        .padding(14)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(.quinary, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+    }
+}
+
+private struct StepStatusIcon: View {
+    let state: SetupStatus.State
+    let symbol: String
+
+    var body: some View {
+        switch state {
+        case .done: Image(systemName: "checkmark.circle.fill").foregroundStyle(.green)
+        case .attention: Image(systemName: "exclamationmark.circle.fill").foregroundStyle(.orange)
+        case .optional: Image(systemName: "circle.dashed").foregroundStyle(.secondary)
+        case .none: Image(systemName: symbol).foregroundStyle(.secondary).frame(width: 16)
+        }
+    }
+}
 
 private struct StepHeader: View {
     let symbol: String
@@ -398,24 +616,23 @@ private struct StepHeader: View {
     let subtitle: String
 
     var body: some View {
-        VStack(spacing: 12) {
+        HStack(alignment: .center, spacing: 16) {
             Image(systemName: symbol)
-                .font(.system(size: 30, weight: .semibold))
+                .font(.system(size: 22, weight: .semibold))
                 .foregroundStyle(.white)
-                .frame(width: 64, height: 64)
+                .frame(width: 48, height: 48)
                 .background(
                     LinearGradient(colors: [.indigo, .purple], startPoint: .topLeading, endPoint: .bottomTrailing),
-                    in: RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    in: RoundedRectangle(cornerRadius: 12, style: .continuous)
                 )
-            Text(title)
-                .font(.system(size: 26, weight: .bold))
-            Text(subtitle)
-                .font(.title3)
-                .foregroundStyle(.secondary)
-                .multilineTextAlignment(.center)
-                .frame(maxWidth: 460)
-                .fixedSize(horizontal: false, vertical: true)
+            VStack(alignment: .leading, spacing: 4) {
+                Text(title).font(.system(size: 22, weight: .bold))
+                Text(subtitle)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
         }
+        .frame(maxWidth: 520, alignment: .leading)
     }
 }
 
@@ -433,38 +650,6 @@ private struct FeatureRow: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text(title).font(.headline)
                 Text(text).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
-            }
-        }
-    }
-}
-
-private struct PermissionCard: View {
-    let symbol: String
-    let title: String
-    let text: String
-    let granted: Bool
-    let action: () -> Void
-
-    var body: some View {
-        Card {
-            HStack(spacing: 14) {
-                Image(systemName: symbol)
-                    .font(.title2)
-                    .foregroundStyle(.indigo)
-                    .frame(width: 30)
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(title).font(.headline)
-                    Text(text).font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
-                }
-                Spacer()
-                if granted {
-                    Label("Allowed", systemImage: "checkmark.circle.fill")
-                        .foregroundStyle(.green)
-                        .labelStyle(.titleAndIcon)
-                } else {
-                    Button("Allow…", action: action)
-                        .buttonStyle(.borderedProminent)
-                }
             }
         }
     }
@@ -495,23 +680,6 @@ private struct KeyCap: View {
                     .shadow(color: .black.opacity(0.18), radius: 0, x: 0, y: 3)
             )
             .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(.quaternary))
-    }
-}
-
-private struct StepDots: View {
-    let current: Int
-    let count: Int
-
-    var body: some View {
-        HStack(spacing: 8) {
-            ForEach(0..<count, id: \.self) { index in
-                Capsule()
-                    .fill(index == current ? Color.accentColor : Color.secondary.opacity(0.3))
-                    .frame(width: index == current ? 22 : 8, height: 8)
-            }
-        }
-        .animation(.easeInOut(duration: 0.2), value: current)
-        .accessibilityLabel("Step \(current + 1) of \(count)")
     }
 }
 
