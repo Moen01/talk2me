@@ -1,4 +1,5 @@
 import AVFAudio
+import AVFoundation
 import Combine
 import Foundation
 import Talk2MeCore
@@ -198,8 +199,11 @@ final class DictationController: ObservableObject {
             return
         }
         guard session.receivedAudio else {
+            // After an update macOS can still report access as granted while sending no audio,
+            // because the permission belongs to the old build's signature.
+            let device = AVCaptureDevice.default(for: .audio)?.localizedName ?? "the microphone"
             lastResult = Permissions.microphoneStatus == .granted
-                ? "No sound from the microphone. Hold the key a little longer, or check the input device."
+                ? "No sound from \(device). If Talk2Me was just updated, allow it again in System Settings > Privacy & Security > Microphone. Otherwise hold the key a little longer."
                 : "No microphone access. Allow Talk2Me in System Settings > Privacy & Security > Microphone."
             phase = .idle
             return
