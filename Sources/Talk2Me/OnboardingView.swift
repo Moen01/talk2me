@@ -417,7 +417,7 @@ private struct ConnectClaudeStep: View {
             transcript: "um so this is uh a quick test of talk to me new paragraph it works",
             backend: controller.makeBackend(),
             model: settings.model,
-            instructions: CleanupPrompt.system(extraInstructions: settings.extraInstructions),
+            instructions: settings.cleanupInstructions,
             timeout: .seconds(max(settings.timeoutSeconds, 30))
         )
         let seconds = Double(outcome.duration.components.seconds) + Double(outcome.duration.components.attoseconds) / 1e18

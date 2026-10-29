@@ -13,12 +13,16 @@ public enum CleanupPrompt {
     Reply with the cleaned text only: no preamble, no quotes, no tags.
     """
 
-    /// The system prompt, with the user's own extra instructions appended when they set any.
-    public static func system(extraInstructions: String?) -> String {
-        guard let extra = extraInstructions?.trimmingCharacters(in: .whitespacesAndNewlines), !extra.isEmpty else {
-            return base
+    /// The system prompt, with the user's dictionary and extra instructions appended when they set any.
+    public static func system(extraInstructions: String?, dictionary: [DictionaryEntry] = []) -> String {
+        var prompt = base
+        if let section = PersonalDictionary.promptSection(dictionary) {
+            prompt += "\n\n" + section
         }
-        return base + "\n\nAdditional instructions from the user:\n" + extra
+        if let extra = extraInstructions?.trimmingCharacters(in: .whitespacesAndNewlines), !extra.isEmpty {
+            prompt += "\n\nAdditional instructions from the user:\n" + extra
+        }
+        return prompt
     }
 
     public static func userMessage(for transcript: String) -> String {
