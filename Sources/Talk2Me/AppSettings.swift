@@ -16,6 +16,7 @@ final class AppSettings: ObservableObject {
         static let claudePath = "claudeCodePath"
         static let extraInstructions = "extraInstructions"
         static let dictionary = "dictionary"
+        static let snippets = "snippets"
         static let onboarded = "hasOpenedSettings"
     }
 
@@ -40,6 +41,15 @@ final class AppSettings: ObservableObject {
     /// Stored as JSON, since UserDefaults can't hold custom types.
     @Published var dictionary: [DictionaryEntry] {
         didSet { defaults.set(try? JSONEncoder().encode(dictionary), forKey: Key.dictionary) }
+    }
+
+    @Published var snippets: [Snippet] {
+        didSet { defaults.set(try? JSONEncoder().encode(snippets), forKey: Key.snippets) }
+    }
+
+    /// Words the recognizer should expect: dictionary words and snippet triggers.
+    var recognizerHints: [String] {
+        PersonalDictionary.recognizerHints(dictionary) + Snippets.recognizerHints(snippets)
     }
 
     /// The cleanup prompt with everything the user has set.
@@ -70,5 +80,7 @@ final class AppSettings: ObservableObject {
         extraInstructions = defaults.string(forKey: Key.extraInstructions) ?? ""
         dictionary = defaults.data(forKey: Key.dictionary)
             .flatMap { try? JSONDecoder().decode([DictionaryEntry].self, from: $0) } ?? []
+        snippets = defaults.data(forKey: Key.snippets)
+            .flatMap { try? JSONDecoder().decode([Snippet].self, from: $0) } ?? []
     }
 }
