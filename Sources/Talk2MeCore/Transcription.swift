@@ -87,11 +87,14 @@ public final class DictationSession: @unchecked Sendable {
     // Only touched from the audio thread that calls `append`.
     private var converter: AVAudioConverter?
     private let audioArrived = Mutex(false)
+    private let hints: [String]
 
     /// False when the microphone delivered nothing, e.g. without Microphone access.
     public var receivedAudio: Bool { audioArrived.withLock { $0 } }
 
-    public init(locale: Locale, format: AVAudioFormat) {
+    /// `hints` are words the recognizer should expect, such as the user's dictionary words.
+    public init(locale: Locale, format: AVAudioFormat, hints: [String] = []) {
+        self.hints = hints
         self.transcriber = OnDeviceDictation.makeTranscriber(locale: locale)
         self.analyzer = SpeechAnalyzer(modules: [transcriber])
         self.format = format
@@ -101,6 +104,12 @@ public final class DictationSession: @unchecked Sendable {
     public func start() async throws {
         let transcriber = self.transcriber
         collector = Task { try await OnDeviceDictation.collect(transcriber.results) }
+        if !hints.isEmpty {
+            let context = AnalysisContext()
+            context.contextualStrings[.general] = hints
+            // Only a hint: dictation still works without it.
+            try? await analyzer.setContext(context)
+        }
         try await analyzer.start(inputSequence: input)
     }
 

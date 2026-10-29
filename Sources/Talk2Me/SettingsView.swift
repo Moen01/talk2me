@@ -2,6 +2,34 @@ import AppKit
 import SwiftUI
 import Talk2MeCore
 
+enum SettingsPage: String, CaseIterable, Identifiable {
+    case general, hotkey, cleanup, dictionary, permissions, language
+
+    var id: Self { self }
+
+    var title: String {
+        switch self {
+        case .general: "General"
+        case .hotkey: "Hotkey"
+        case .cleanup: "Cleanup with Claude"
+        case .dictionary: "Dictionary"
+        case .permissions: "Permissions"
+        case .language: "Language"
+        }
+    }
+
+    var systemImage: String {
+        switch self {
+        case .general: "gearshape"
+        case .hotkey: "keyboard"
+        case .cleanup: "sparkles"
+        case .dictionary: "character.book.closed"
+        case .permissions: "lock.shield"
+        case .language: "globe"
+        }
+    }
+}
+
 struct SettingsView: View {
     @ObservedObject var settings: AppSettings
     let controller: DictationController
@@ -17,129 +45,24 @@ struct SettingsView: View {
     @State private var accessibilityGranted = Permissions.accessibilityGranted
     @State private var microphoneGranted = Permissions.microphoneStatus == .granted
     @State private var launchAtLogin = LaunchAtLogin.isEnabled
+    @State private var page: SettingsPage? = .general
 
     private let sample = "um so I was thinking we should uh move the meeting to thursday new paragraph also can you send me the slides"
 
     var body: some View {
-        Form {
-            Section("General") {
-                Toggle("Open Talk2Me when I log in", isOn: $launchAtLogin)
-                    .onChange(of: launchAtLogin) { _, enabled in LaunchAtLogin.set(enabled) }
-                UpdateRow()
+        NavigationSplitView {
+            List(SettingsPage.allCases, selection: $page) { page in
+                Label(page.title, systemImage: page.systemImage).tag(page)
             }
-
-            Section("Shortcuts") {
-                ShortcutPicker(title: "Hold to dictate", key: $settings.holdKey,
-                               recordKey: recordKey, cancelRecording: cancelRecording)
-                Toggle("Hands-free mode", isOn: $settings.handsFreeEnabled)
-                if settings.handsFreeEnabled {
-                    ShortcutPicker(title: "Double-tap for hands-free", key: $settings.handsFreeKey,
-                                   recordKey: recordKey, cancelRecording: cancelRecording)
-                    Text("For longer dictation. Press Enter to finish and paste, or Esc to discard.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-                if settings.holdKey.isFn || (settings.handsFreeEnabled && settings.handsFreeKey.isFn) {
-                    Toggle("Hide Fn from other apps (stops the emoji picker opening)", isOn: $settings.suppressFnKey)
-                    Button("Open Keyboard settings to set \"Press globe key\" to \"Do Nothing\"") {
-                        Permissions.openKeyboardSettings()
-                    }
-                    .buttonStyle(.link)
-                }
-            }
-
-            Section("Cleanup with Claude") {
-                Picker("Backend", selection: $settings.backend) {
-                    ForEach(CleanupBackendKind.allCases) { Text($0.displayName).tag($0) }
-                }
-                Picker("Model", selection: $settings.model) {
-                    ForEach(ClaudeModel.allCases) { Text($0.displayName).tag($0) }
-                }
-                .disabled(settings.backend == .off)
-                Stepper(value: $settings.timeoutSeconds, in: 3...60, step: 1) {
-                    Text("Give up after \(Int(settings.timeoutSeconds)) s and paste the raw transcript")
-                }
-                TextField("Extra instructions (optional)", text: $settings.extraInstructions, axis: .vertical)
-                    .lineLimit(2...5)
-            }
-
-            if settings.backend == .claudeCode {
-                Section("Claude Code") {
-                    LabeledContent("Found at", value: ClaudeCodeBackend.locate(customPath: settings.claudePath)?.path ?? "not found")
-                    TextField("Custom path (leave empty to search)", text: $settings.claudePath)
-                    Text("Sign in once in Terminal with `claude auth login`. Talk2Me never sees your Claude login; it runs your own Claude Code, the way T3 Code does.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-            }
-
-            if settings.backend == .apiKey {
-                Section("Claude API key") {
-                    SecureField(apiKeySaved ? "Saved in the Keychain" : "sk-ant-…", text: $apiKeyDraft)
-                    HStack {
-                        Button("Save key") {
-                            let key = apiKeyDraft.trimmingCharacters(in: .whitespacesAndNewlines)
-                            guard !key.isEmpty, KeychainStore.save(key) else { return }
-                            controller.updateAPIKeyCache(key)
-                            apiKeyDraft = ""
-                            apiKeySaved = true
-                        }
-                        .disabled(apiKeyDraft.isEmpty)
-                        Button("Remove key", role: .destructive) {
-                            KeychainStore.delete()
-                            controller.updateAPIKeyCache(nil)
-                            apiKeySaved = false
-                        }
-                        .disabled(!apiKeySaved)
-                    }
-                    Text("Create a key at platform.claude.com. Usage is billed to that key.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-            }
-
-            Section("Dictation") {
-                Picker("Language", selection: $settings.localeID) {
-                    if !languages.contains(where: { $0.identifier == settings.localeID }) {
-                        Text(settings.localeID).tag(settings.localeID)
-                    }
-                    ForEach(languages, id: \.identifier) { locale in
-                        Text(Locale.current.localizedString(forIdentifier: locale.identifier) ?? locale.identifier)
-                            .tag(locale.identifier)
-                    }
-                }
-                .onChange(of: settings.localeID) { languageChanged() }
-            }
-
-            Section("Try it") {
-                Button(testing ? "Cleaning up…" : "Test cleanup with a sample sentence") {
-                    Task { await runTest() }
-                }
-                .disabled(testing || settings.backend == .off)
-                if !testOutput.isEmpty {
-                    Text(testOutput).textSelection(.enabled).font(.callout)
-                }
-            }
-
-            Section("Permissions") {
-                permissionRow("Accessibility (shortcut keys and pasting)", granted: accessibilityGranted) {
-                    Permissions.requestAccessibility()
-                }
-                permissionRow("Microphone", granted: microphoneGranted) {
-                    Task {
-                        if Permissions.microphoneStatus == .undetermined {
-                            microphoneGranted = await Permissions.requestMicrophone()
-                        } else {
-                            Permissions.openMicrophoneSettings()
-                        }
-                    }
-                }
-            }
+            .navigationSplitViewColumnWidth(190)
+            .toolbar(removing: .sidebarToggle)
+        } detail: {
+            Form { content(for: page ?? .general) }
+                .formStyle(.grouped)
         }
-        .formStyle(.grouped)
         // A grouped Form scrolls and has no height of its own, so without one the window
         // sized to it can collapse to just its title bar.
-        .frame(width: 540, height: 640)
+        .frame(width: 760, height: 600)
         .task {
             apiKeySaved = KeychainStore.read() != nil
             languages = await OnDeviceDictation.supportedLocales().sorted { $0.identifier < $1.identifier }
@@ -147,6 +70,144 @@ struct SettingsView: View {
         .onReceive(Timer.publish(every: 2, on: .main, in: .common).autoconnect()) { _ in
             accessibilityGranted = Permissions.accessibilityGranted
             microphoneGranted = Permissions.microphoneStatus == .granted
+        }
+    }
+
+    @ViewBuilder
+    private func content(for page: SettingsPage) -> some View {
+        switch page {
+        case .general: general
+        case .hotkey: hotkey
+        case .cleanup: cleanup
+        case .dictionary: DictionaryEditor(entries: $settings.dictionary)
+        case .permissions: permissions
+        case .language: language
+        }
+    }
+
+    private var general: some View {
+        Section {
+            Toggle("Open Talk2Me when I log in", isOn: $launchAtLogin)
+                .onChange(of: launchAtLogin) { _, enabled in LaunchAtLogin.set(enabled) }
+            UpdateRow()
+        }
+    }
+
+    @ViewBuilder
+    private var hotkey: some View {
+        Section {
+            ShortcutPicker(title: "Hold to dictate", key: $settings.holdKey,
+                           recordKey: recordKey, cancelRecording: cancelRecording)
+            Toggle("Hands-free mode", isOn: $settings.handsFreeEnabled)
+            if settings.handsFreeEnabled {
+                ShortcutPicker(title: "Double-tap for hands-free", key: $settings.handsFreeKey,
+                               recordKey: recordKey, cancelRecording: cancelRecording)
+                Text("For longer dictation. Press Enter to finish and paste, or Esc to discard.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            if settings.holdKey.isFn || (settings.handsFreeEnabled && settings.handsFreeKey.isFn) {
+                Toggle("Hide Fn from other apps (stops the emoji picker opening)", isOn: $settings.suppressFnKey)
+                Button("Open Keyboard settings to set \"Press globe key\" to \"Do Nothing\"") {
+                    Permissions.openKeyboardSettings()
+                }
+                .buttonStyle(.link)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var cleanup: some View {
+        Section {
+            Picker("Backend", selection: $settings.backend) {
+                ForEach(CleanupBackendKind.allCases) { Text($0.displayName).tag($0) }
+            }
+            Picker("Model", selection: $settings.model) {
+                ForEach(ClaudeModel.allCases) { Text($0.displayName).tag($0) }
+            }
+            .disabled(settings.backend == .off)
+            Stepper(value: $settings.timeoutSeconds, in: 3...60, step: 1) {
+                Text("Give up after \(Int(settings.timeoutSeconds)) s and paste the raw transcript")
+            }
+            TextField("Extra instructions (optional)", text: $settings.extraInstructions, axis: .vertical)
+                .lineLimit(2...5)
+        }
+
+        if settings.backend == .claudeCode {
+            Section("Claude Code") {
+                LabeledContent("Found at", value: ClaudeCodeBackend.locate(customPath: settings.claudePath)?.path ?? "not found")
+                TextField("Custom path (leave empty to search)", text: $settings.claudePath)
+                Text("Sign in once in Terminal with `claude auth login`. Talk2Me never sees your Claude login; it runs your own Claude Code, the way T3 Code does.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+
+        if settings.backend == .apiKey {
+            Section("Claude API key") {
+                SecureField(apiKeySaved ? "Saved in the Keychain" : "sk-ant-…", text: $apiKeyDraft)
+                HStack {
+                    Button("Save key") {
+                        let key = apiKeyDraft.trimmingCharacters(in: .whitespacesAndNewlines)
+                        guard !key.isEmpty, KeychainStore.save(key) else { return }
+                        controller.updateAPIKeyCache(key)
+                        apiKeyDraft = ""
+                        apiKeySaved = true
+                    }
+                    .disabled(apiKeyDraft.isEmpty)
+                    Button("Remove key", role: .destructive) {
+                        KeychainStore.delete()
+                        controller.updateAPIKeyCache(nil)
+                        apiKeySaved = false
+                    }
+                    .disabled(!apiKeySaved)
+                }
+                Text("Create a key at platform.claude.com. Usage is billed to that key.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+
+        Section("Try it") {
+            Button(testing ? "Cleaning up…" : "Test cleanup with a sample sentence") {
+                Task { await runTest() }
+            }
+            .disabled(testing || settings.backend == .off)
+            if !testOutput.isEmpty {
+                Text(testOutput).textSelection(.enabled).font(.callout)
+            }
+        }
+    }
+
+    private var permissions: some View {
+        Section {
+            permissionRow("Accessibility (shortcut keys and pasting)", granted: accessibilityGranted) {
+                Permissions.requestAccessibility()
+            }
+            permissionRow("Microphone", granted: microphoneGranted) {
+                Task {
+                    if Permissions.microphoneStatus == .undetermined {
+                        microphoneGranted = await Permissions.requestMicrophone()
+                    } else {
+                        Permissions.openMicrophoneSettings()
+                    }
+                }
+            }
+        }
+    }
+
+    private var language: some View {
+        Section {
+            Picker("Dictation language", selection: $settings.localeID) {
+                if !languages.contains(where: { $0.identifier == settings.localeID }) {
+                    Text(settings.localeID).tag(settings.localeID)
+                }
+                ForEach(languages, id: \.identifier) { locale in
+                    Text(Locale.current.localizedString(forIdentifier: locale.identifier) ?? locale.identifier)
+                        .tag(locale.identifier)
+                }
+            }
+            .onChange(of: settings.localeID) { languageChanged() }
         }
     }
 
@@ -166,7 +227,7 @@ struct SettingsView: View {
             transcript: sample,
             backend: controller.makeBackend(),
             model: settings.model,
-            instructions: CleanupPrompt.system(extraInstructions: settings.extraInstructions),
+            instructions: settings.cleanupInstructions,
             timeout: .seconds(settings.timeoutSeconds)
         )
         let seconds = Double(outcome.duration.components.seconds) + Double(outcome.duration.components.attoseconds) / 1e18

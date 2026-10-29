@@ -15,6 +15,7 @@ final class AppSettings: ObservableObject {
         static let handsFreeKeyCode = "handsFreeKeyCode"
         static let claudePath = "claudeCodePath"
         static let extraInstructions = "extraInstructions"
+        static let dictionary = "dictionary"
         static let onboarded = "hasOpenedSettings"
     }
 
@@ -36,6 +37,15 @@ final class AppSettings: ObservableObject {
     }
     @Published var claudePath: String { didSet { defaults.set(claudePath, forKey: Key.claudePath) } }
     @Published var extraInstructions: String { didSet { defaults.set(extraInstructions, forKey: Key.extraInstructions) } }
+    /// Stored as JSON, since UserDefaults can't hold custom types.
+    @Published var dictionary: [DictionaryEntry] {
+        didSet { defaults.set(try? JSONEncoder().encode(dictionary), forKey: Key.dictionary) }
+    }
+
+    /// The cleanup prompt with everything the user has set.
+    var cleanupInstructions: String {
+        CleanupPrompt.system(extraInstructions: extraInstructions, dictionary: dictionary)
+    }
 
     var hasCompletedOnboarding: Bool {
         get { defaults.bool(forKey: Key.onboarded) }
@@ -58,5 +68,7 @@ final class AppSettings: ObservableObject {
         handsFreeKey = storedKey(Key.handsFreeKeyCode) ?? .fn
         claudePath = defaults.string(forKey: Key.claudePath) ?? ""
         extraInstructions = defaults.string(forKey: Key.extraInstructions) ?? ""
+        dictionary = defaults.data(forKey: Key.dictionary)
+            .flatMap { try? JSONDecoder().decode([DictionaryEntry].self, from: $0) } ?? []
     }
 }

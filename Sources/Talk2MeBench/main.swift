@@ -6,7 +6,7 @@ import Talk2MeCore
 //
 //   talk2me-bench cleanup [--backend claude-code|api] [--model opus|sonnet|haiku] [--runs N] [text]
 //   talk2me-bench transcribe <audio-file> [--locale nb_NO]
-//   talk2me-bench live <audio-file>|none [--paced] [--locale nb_NO]
+//   talk2me-bench live <audio-file>|none [--paced] [--locale nb_NO] [--hints "Artitma,Talk2Me"]
 //
 // The API backend reads ANTHROPIC_API_KEY from the environment.
 
@@ -17,7 +17,7 @@ let usage = """
 usage:
   talk2me-bench cleanup [--backend claude-code|api] [--model opus|sonnet|haiku] [--runs N] [text]
   talk2me-bench transcribe <audio-file> [--locale nb_NO]
-  talk2me-bench live <audio-file>|none [--paced] [--locale nb_NO]
+  talk2me-bench live <audio-file>|none [--paced] [--locale nb_NO] [--hints "Artitma,Talk2Me"]
 """
 
 let sampleTranscript = "um so I was thinking that we should uh move the meeting to thursday instead of you know wednesday because the the client can't make it new paragraph also can you send me the slides"
@@ -99,7 +99,8 @@ case "live":
         func step(_ name: String) { print("\(name) at \(clock.now - start)") }
         let (locale, format) = try await OnDeviceDictation.prepare(locale: Locale(identifier: localeID))
         step("prepared \(locale.identifier) \(format)")
-        let session = DictationSession(locale: locale, format: format)
+        let hints = option("--hints")?.split(separator: ",").map(String.init) ?? []
+        let session = DictationSession(locale: locale, format: format, hints: hints)
         let started = Task { try await session.start() }
         // "none" sends no audio at all, like a microphone that never delivered a buffer.
         if path != "none" {

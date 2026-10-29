@@ -37,7 +37,7 @@ The menu-bar icon shows the current state and the result of the last dictation.
 
 ### Choosing your keys
 
-In Settings > Shortcuts, pick the key you hold to dictate and the key you double-tap for
+In Settings > Hotkey, pick the key you hold to dictate and the key you double-tap for
 hands-free mode (or turn hands-free off). Choose a preset (Fn, Right Option, Right Command,
 Right Control, Left Option, Left Command) or click **Record a key…** and press any key.
 
@@ -46,6 +46,21 @@ Right Control, Left Option, Left Command) or click **Record a key…** and press
 - A regular key such as F13 is taken over completely: it won't type in other apps.
 - Escape, Enter and Caps Lock can't be used, because Escape and Enter control hands-free mode
   and Caps Lock toggles instead of holding.
+
+### Dictionary
+
+In Settings > Dictionary, add the words Talk2Me must write your way. Type what you say under
+**Speech word** and what must be written under **Dictionary**:
+
+| Speech word | Dictionary |
+| --- | --- |
+| PR | Pull Request |
+| PRs, PR's | pull requests |
+| arythma | Artitma |
+
+Separate more than one speech word with commas. Talk2Me replaces whole words only, in any letter
+case, so "pr" becomes "Pull Request" but "press" stays. The dictionary words are also given to the
+speech recognizer, so it hears them more often, and to Claude, so cleanup keeps them as written.
 
 ## Connecting to Claude
 

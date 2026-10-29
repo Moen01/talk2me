@@ -131,7 +131,8 @@ final class DictationController: ObservableObject {
             Task { await prepareDictation() }
             return
         }
-        let session = DictationSession(locale: prepared.locale, format: prepared.format)
+        let session = DictationSession(locale: prepared.locale, format: prepared.format,
+                                        hints: PersonalDictionary.recognizerHints(settings.dictionary))
         do {
             try capture.start { [weak self] buffer in
                 session.append(buffer)
@@ -215,11 +216,13 @@ final class DictationController: ObservableObject {
         }
 
         phase = .cleaning
+        // Replaced before cleanup, so a raw paste (cleanup off or failed) still uses the dictionary.
+        let transcript = PersonalDictionary.apply(settings.dictionary, to: raw)
         let outcome = await CleanupRouter.run(
-            transcript: raw,
+            transcript: transcript,
             backend: makeBackend(),
             model: settings.model,
-            instructions: CleanupPrompt.system(extraInstructions: settings.extraInstructions),
+            instructions: settings.cleanupInstructions,
             timeout: .seconds(settings.timeoutSeconds)
         )
 

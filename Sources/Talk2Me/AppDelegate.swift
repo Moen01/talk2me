@@ -108,7 +108,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             )
             let window = NSWindow(contentViewController: NSHostingController(rootView: view))
             window.title = "Talk2Me Settings"
-            window.styleMask = [.titled, .closable]
+            // Full-size content lets the sidebar run up under the title bar, as in System Settings.
+            window.styleMask = [.titled, .closable, .fullSizeContentView]
             window.isReleasedWhenClosed = false
             window.center()
             NotificationCenter.default.addObserver(forName: NSWindow.willCloseNotification, object: window, queue: .main) { [weak self] _ in
