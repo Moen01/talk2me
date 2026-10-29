@@ -1,3 +1,4 @@
+import AppKit
 import AVFAudio
 import AVFoundation
 import Combine
@@ -132,7 +133,7 @@ final class DictationController: ObservableObject {
             return
         }
         let session = DictationSession(locale: prepared.locale, format: prepared.format,
-                                        hints: PersonalDictionary.recognizerHints(settings.dictionary))
+                                        hints: settings.recognizerHints)
         do {
             try capture.start { [weak self] buffer in
                 session.append(buffer)
@@ -215,6 +216,13 @@ final class DictationController: ObservableObject {
             return
         }
 
+        if let snippet = Snippets.match(settings.snippets, transcript: raw) {
+            phase = .inserting
+            lastResult = await run(snippet)
+            phase = .idle
+            return
+        }
+
         phase = .cleaning
         // Replaced before cleanup, so a raw paste (cleanup off or failed) still uses the dictionary.
         let transcript = PersonalDictionary.apply(settings.dictionary, to: raw)
@@ -230,6 +238,49 @@ final class DictationController: ObservableObject {
         let inserted = await inserter.insert(outcome.text)
         lastResult = describe(outcome, inserted)
         phase = .idle
+    }
+
+    // MARK: - Snippets
+
+    /// Returns the line shown in the menu bar.
+    private func run(_ snippet: Snippet) async -> String {
+        let name = "\"\(snippet.trigger.trimmingCharacters(in: .whitespacesAndNewlines))\""
+        switch snippet.kind {
+        case .openLink:
+            guard let url = snippet.url, NSWorkspace.shared.open(url) else {
+                return "Snippet \(name): could not open \"\(snippet.value)\"."
+            }
+            return "Snippet \(name): opened \(url.absoluteString)."
+        case .runShortcut:
+            return runShortcut(named: snippet.value.trimmingCharacters(in: .whitespacesAndNewlines), for: name)
+        case .insertText:
+            switch await inserter.insert(snippet.value) {
+            case .pasted: return "Snippet \(name): pasted."
+            case .copiedOnly(let reason): return "Snippet \(name): \(reason)"
+            }
+        }
+    }
+
+    /// Starts the shortcut and returns at once, since a shortcut can run for a long time.
+    /// The menu bar line is updated again when it ends.
+    private func runShortcut(named shortcut: String, for name: String) -> String {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/shortcuts")
+        process.arguments = ["run", shortcut]
+        process.terminationHandler = { [weak self] process in
+            let succeeded = process.terminationStatus == 0
+            DispatchQueue.main.async {
+                self?.lastResult = succeeded
+                    ? "Snippet \(name): shortcut \"\(shortcut)\" finished."
+                    : "Snippet \(name): shortcut \"\(shortcut)\" failed. Check that it exists in the Shortcuts app."
+            }
+        }
+        do {
+            try process.run()
+        } catch {
+            return "Snippet \(name): could not run Shortcuts: \(error.localizedDescription)"
+        }
+        return "Snippet \(name): running shortcut \"\(shortcut)\"…"
     }
 
     // MARK: - Cleanup

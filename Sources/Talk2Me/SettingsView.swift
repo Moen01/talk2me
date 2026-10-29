@@ -3,7 +3,7 @@ import SwiftUI
 import Talk2MeCore
 
 enum SettingsPage: String, CaseIterable, Identifiable {
-    case general, hotkey, cleanup, dictionary, permissions, language
+    case general, hotkey, cleanup, dictionary, snippets, permissions, language
 
     var id: Self { self }
 
@@ -13,6 +13,7 @@ enum SettingsPage: String, CaseIterable, Identifiable {
         case .hotkey: "Hotkey"
         case .cleanup: "Cleanup with Claude"
         case .dictionary: "Dictionary"
+        case .snippets: "Snippets"
         case .permissions: "Permissions"
         case .language: "Language"
         }
@@ -24,6 +25,7 @@ enum SettingsPage: String, CaseIterable, Identifiable {
         case .hotkey: "keyboard"
         case .cleanup: "sparkles"
         case .dictionary: "character.book.closed"
+        case .snippets: "bolt"
         case .permissions: "lock.shield"
         case .language: "globe"
         }
@@ -80,6 +82,7 @@ struct SettingsView: View {
         case .hotkey: hotkey
         case .cleanup: cleanup
         case .dictionary: DictionaryEditor(entries: $settings.dictionary)
+        case .snippets: SnippetsEditor(snippets: $settings.snippets)
         case .permissions: permissions
         case .language: language
         }

@@ -62,6 +62,21 @@ Separate more than one speech word with commas. Talk2Me replaces whole words onl
 case, so "pr" becomes "Pull Request" but "press" stays. The dictionary words are also given to the
 speech recognizer, so it hears them more often, and to Claude, so cleanup keeps them as written.
 
+### Snippets
+
+In Settings > Snippets, make voice commands. Say only the phrase and release the key: Talk2Me
+does the action instead of pasting the words.
+
+| When I say | Action |
+| --- | --- |
+| open jira | **Open link**: `jira.catacloud.no` (https:// is added when missing) |
+| start standup | **Run shortcut**: the name of a shortcut in the Shortcuts app |
+| my address | **Paste text**: any text, also more than one line |
+
+Upper/lower case and punctuation do not matter, but the phrase must be the whole dictation:
+"can you open jira" pastes the sentence as normal. A shortcut can do almost anything, including
+running a shell script, so use **Run shortcut** for tasks.
+
 ## Connecting to Claude
 
 Pick a backend in Settings:
