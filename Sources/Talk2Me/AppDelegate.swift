@@ -15,6 +15,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var subscriptions = Set<AnyCancellable>()
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        installMainMenu()
         controller = DictationController(settings: settings)
         statusBar = StatusBarController(controller: controller, actions: .init(
             openSettings: { [weak self] in self?.showSettings() },
@@ -72,6 +73,29 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         } else {
             showOnboarding()
         }
+    }
+
+    /// An accessory app has no main menu, so ⌘X/⌘C/⌘V/⌘A never reach the focused text
+    /// field in our Settings and onboarding windows — only the auto-built right-click menu
+    /// works. A standard Edit menu carries the key equivalents that dispatch these actions
+    /// down the responder chain. The menu bar stays hidden; only the shortcuts come back.
+    private func installMainMenu() {
+        let editMenu = NSMenu(title: "Edit")
+        editMenu.addItem(withTitle: "Undo", action: Selector(("undo:")), keyEquivalent: "z")
+        let redo = editMenu.addItem(withTitle: "Redo", action: Selector(("redo:")), keyEquivalent: "z")
+        redo.keyEquivalentModifierMask = [.command, .shift]
+        editMenu.addItem(.separator())
+        editMenu.addItem(withTitle: "Cut", action: #selector(NSText.cut(_:)), keyEquivalent: "x")
+        editMenu.addItem(withTitle: "Copy", action: #selector(NSText.copy(_:)), keyEquivalent: "c")
+        editMenu.addItem(withTitle: "Paste", action: #selector(NSText.paste(_:)), keyEquivalent: "v")
+        editMenu.addItem(withTitle: "Select All", action: #selector(NSText.selectAll(_:)), keyEquivalent: "a")
+
+        let editItem = NSMenuItem()
+        editItem.submenu = editMenu
+
+        let mainMenu = NSMenu()
+        mainMenu.addItem(editItem)
+        NSApp.mainMenu = mainMenu
     }
 
     /// The event tap needs Accessibility access; keep retrying until the user grants it.
