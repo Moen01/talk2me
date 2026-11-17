@@ -81,12 +81,13 @@ final class StatusBarController: NSObject {
         startOrchestratorItem.isHidden = !orchestrateEnabled
 
         if orchestrateEnabled {
+            // lastStatus carries the real outcome: "Running.", a failure line, or the
+            // Automation-denied line — the menu shows exactly why a start did not take.
+            orchestratorLine.title = "Orchestrator: \(orchestrator.lastStatus)"
             switch orchestrator.state {
             case .notRunning:
-                orchestratorLine.title = "Orchestrator: not running"
                 startOrchestratorItem.isEnabled = true
             case .running:
-                orchestratorLine.title = "Orchestrator: running"
                 // Disable while running so the user can't start a second instance.
                 startOrchestratorItem.isEnabled = false
             }

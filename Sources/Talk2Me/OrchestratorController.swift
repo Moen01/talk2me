@@ -16,6 +16,11 @@ final class OrchestratorController {
     }
 
     private(set) var state: State = .notRunning { didSet { if state != oldValue { onChange?() } } }
+
+    /// Human-readable outcome of the last ensureLive/send, shown in the menu bar. Covers the states
+    /// `state` cannot: an Automation denial, a spawn failure, "claude did not start", etc.
+    private(set) var lastStatus: String = "Not running." { didSet { if lastStatus != oldValue { onChange?() } } }
+
     /// For the menu bar; SwiftUI views observe their own model instead.
     var onChange: (() -> Void)?
 
@@ -33,9 +38,10 @@ final class OrchestratorController {
     // MARK: - Public API
 
     /// Launches the orchestrator if it is not already live. Returns once the window exists (or the
-    /// attempt failed). Used to warm it up before the first spoken line.
+    /// attempt failed). Used to warm it up before the first spoken line. Stores the outcome in
+    /// `lastStatus` so the menu bar shows why a start failed.
     func startIfNeeded() async {
-        _ = await ensureLive()
+        lastStatus = Self.statusLine(for: await ensureLive())
     }
 
     /// Ensures a live orchestrator, sends `text` to it, focuses its window, and returns the line to
@@ -47,9 +53,12 @@ final class OrchestratorController {
         case .success(let id):
             windowID = id
         case .denied:
+            lastStatus = Self.deniedLine
             return Self.deniedLine
         case .failure(let reason):
-            return "Could not reach the orchestrator: \(reason)"
+            let line = Self.unreachableLine(reason)
+            lastStatus = line
+            return line
         }
 
         // Terminal's `do script "x" in window id N` writes to that window's currently SELECTED tab,
@@ -57,16 +66,33 @@ final class OrchestratorController {
         // the user manually adds and switches tabs in that window — acceptable for v1.
         switch await run(TerminalScript.send(text, toWindowID: windowID)) {
         case .denied:
+            lastStatus = Self.deniedLine
             return Self.deniedLine
         case .failure(let reason):
-            return "Could not reach the orchestrator: \(reason)"
+            let line = Self.unreachableLine(reason)
+            lastStatus = line
+            return line
         case .success:
             break
         }
 
         // Focus is best-effort: the text already landed, so a failure here is not worth surfacing.
         _ = await run(TerminalScript.focusWindow(id: windowID))
+        lastStatus = "Running."
         return "Sent to orchestrator."
+    }
+
+    /// Maps an ensureLive outcome to the menu-bar status line.
+    private static func statusLine(for outcome: Live) -> String {
+        switch outcome {
+        case .success: return "Running."
+        case .denied: return deniedLine
+        case .failure(let reason): return unreachableLine(reason)
+        }
+    }
+
+    private static func unreachableLine(_ reason: String) -> String {
+        "Could not reach the orchestrator: \(reason)"
     }
 
     // MARK: - Liveness
