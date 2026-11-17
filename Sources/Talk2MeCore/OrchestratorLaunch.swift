@@ -107,10 +107,13 @@ public enum OrchestratorLaunch {
     /// - Parameter serverPath: Absolute path to the MCP server binary.
     public static func mcpConfigJSON(serverPath: String) -> String {
         // Build manually to avoid Foundation import overhead and guarantee key order.
-        // The only character we need to escape in a JSON string is `"` and `\`.
+        // Escape characters in order: backslash, quote, then control characters.
         let escaped = serverPath
             .replacingOccurrences(of: "\\", with: "\\\\")
             .replacingOccurrences(of: "\"", with: "\\\"")
+            .replacingOccurrences(of: "\n", with: "\\n")
+            .replacingOccurrences(of: "\t", with: "\\t")
+            .replacingOccurrences(of: "\r", with: "\\r")
         return #"{"mcpServers":{"talk2me":{"command":"\#(escaped)"}}}"#
     }
 

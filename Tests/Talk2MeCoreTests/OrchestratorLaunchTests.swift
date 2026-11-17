@@ -130,6 +130,24 @@ struct OrchestratorLaunchTests {
         #expect(cmd.hasPrefix("cd '/workspace' && '/usr/bin/claude'"))
     }
 
+    @Test func shellCommandQuotesSystemPromptCorrectly() {
+        let cmd = OrchestratorLaunch.shellCommand(
+            claudePath: "/bin/claude",
+            rootFolder: "/tmp",
+            mcpConfigPath: "/tmp/mcp.json"
+        )
+
+        // The system prompt must be single-quote-escaped in the command.
+        // Verify that the prompt is wrapped in single quotes and any interior
+        // single quotes would be escaped as '\''
+        let prompt = OrchestratorLaunch.systemPrompt
+        let expectedQuoted = "'" + prompt.replacingOccurrences(of: "'", with: "'" + "\\" + "'" + "'") + "'"
+
+        // The command must contain the correctly quoted prompt.
+        // This pins the quoting rule so a future quote in the prompt cannot silently break the command.
+        #expect(cmd.contains(expectedQuoted), "Prompt must be properly quoted in command")
+    }
+
     // MARK: - sessionShellCommand
 
     @Test func sessionShellCommandStructure() {
@@ -167,6 +185,47 @@ struct OrchestratorLaunchTests {
         #expect(json.contains("\"talk2me\""))
         #expect(json.contains("\"mcpServers\""))
         #expect(json.contains("\"/bin/mcp\""))
+    }
+
+    @Test func mcpConfigJSONEscapesControlCharacters() throws {
+        // Path with newline, tab, and carriage return must be escaped
+        let pathWithNewline = "/path/with\nnewline"
+        let json = OrchestratorLaunch.mcpConfigJSON(serverPath: pathWithNewline)
+
+        // The JSON must be valid and round-trip correctly
+        let data = try #require(json.data(using: .utf8))
+        let decoded = try #require(
+            JSONSerialization.jsonObject(with: data) as? [String: Any]
+        )
+        let mcpServers = try #require(decoded["mcpServers"] as? [String: Any])
+        let talk2me = try #require(mcpServers["talk2me"] as? [String: Any])
+        let command = try #require(talk2me["command"] as? String)
+
+        // Path must round-trip exactly
+        #expect(command == pathWithNewline)
+
+        // Also test with tab and carriage return
+        let pathWithTab = "/path/with\ttab"
+        let jsonTab = OrchestratorLaunch.mcpConfigJSON(serverPath: pathWithTab)
+        let dataTab = try #require(jsonTab.data(using: .utf8))
+        let decodedTab = try #require(
+            JSONSerialization.jsonObject(with: dataTab) as? [String: Any]
+        )
+        let mcpServersTab = try #require(decodedTab["mcpServers"] as? [String: Any])
+        let talk2meTab = try #require(mcpServersTab["talk2me"] as? [String: Any])
+        let commandTab = try #require(talk2meTab["command"] as? String)
+        #expect(commandTab == pathWithTab)
+
+        let pathWithCR = "/path/with\rcarriage"
+        let jsonCR = OrchestratorLaunch.mcpConfigJSON(serverPath: pathWithCR)
+        let dataCR = try #require(jsonCR.data(using: .utf8))
+        let decodedCR = try #require(
+            JSONSerialization.jsonObject(with: dataCR) as? [String: Any]
+        )
+        let mcpServersCR = try #require(decodedCR["mcpServers"] as? [String: Any])
+        let talk2meCR = try #require(mcpServersCR["talk2me"] as? [String: Any])
+        let commandCR = try #require(talk2meCR["command"] as? String)
+        #expect(commandCR == pathWithCR)
     }
 
     // MARK: - systemPrompt
