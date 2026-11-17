@@ -132,6 +132,8 @@ final class DictationController: ObservableObject {
         guard phase == .idle else {
             // Still finishing the previous dictation.
             machine.reset()
+            // Refused start must not leave an orchestrator target armed.
+            pendingTarget = .focusedApp
             return
         }
         guard let prepared, prepared.localeID == settings.localeID else {
