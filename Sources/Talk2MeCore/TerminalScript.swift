@@ -41,7 +41,9 @@ public enum TerminalScript {
     /// Note: `before`/`after` are AppleScript reserved words (prepositions), so we use
     /// `prevIDs`/`nextIDs`. We also cannot use a bare `return` inside a tell-block; instead we
     /// capture the result in `newID` and make it the final expression of the script.
-    /// As a last-resort fallback `id of window 1` is returned when the diff yields nothing.
+    /// When the set-diff finds nothing the script evaluates to `-1`; Swift callers treat a
+    /// non-positive or unparseable id as failure rather than guessing a window (which could be
+    /// a bare shell, not the session we just launched).
     public static func openWindow(command: String) -> String {
         let escaped = escape(command)
         return """
@@ -57,11 +59,7 @@ public enum TerminalScript {
                     exit repeat
                 end if
             end repeat
-            if newID is -1 then
-                get id of window 1
-            else
-                newID
-            end if
+            newID
         end tell
         """
     }

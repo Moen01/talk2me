@@ -22,8 +22,9 @@ struct TerminalScriptTests {
         #expect(s.contains("repeat with w in nextIDs"))
         #expect(s.contains("prevIDs does not contain (w as integer)"))
         #expect(s.contains("activate"))
-        // last-resort fallback
-        #expect(s.contains("id of window 1"))
+        // When the diff finds nothing the script evaluates to -1 (never guesses window 1).
+        #expect(s.contains("set newID to -1"))
+        #expect(!s.contains("id of window 1"))
     }
 
     @Test func openWindowEscapesCommand() {

@@ -176,8 +176,17 @@ final class OrchestratorController {
         case .failure(let reason):
             return .failure(reason)
         case .success(let output):
-            guard let windowID = Int(output.trimmingCharacters(in: .whitespacesAndNewlines)) else {
+            // The openWindow script evaluates to -1 when the set-diff found no new window.
+            // A non-positive or unparseable id means we have no window to trust — never guess one.
+            guard let windowID = Int(output.trimmingCharacters(in: .whitespacesAndNewlines)),
+                  windowID > 0 else {
                 return .failure("Terminal did not return a window id.")
+            }
+            // claude takes a moment to start inside the new window. Before the first send we
+            // confirm it is actually on this window's tty, so speech can never land in a bare
+            // shell (e.g. if the wrong window was captured). Only then persist and report live.
+            guard await waitForClaudeOnWindow(windowID) else {
+                return .failure("The orchestrator window opened but claude did not start.")
             }
             var registry = registry
             registry.orchestratorWindowID = windowID
@@ -185,6 +194,16 @@ final class OrchestratorController {
             state = .running(windowID: windowID)
             return .success(windowID: windowID)
         }
+    }
+
+    /// Polls up to ~10s (1s interval) for a `claude`/`node` process on the window's tty, reusing
+    /// the same `isLiveOrchestrator` ps-check. Returns false on timeout or an Apple-Events denial.
+    private func waitForClaudeOnWindow(_ windowID: Int) async -> Bool {
+        for _ in 0..<10 {
+            if case .alive = await isLiveOrchestrator(windowID: windowID) { return true }
+            try? await Task.sleep(for: .seconds(1))
+        }
+        return false
     }
 
     private var claudeCustomPath: String? {

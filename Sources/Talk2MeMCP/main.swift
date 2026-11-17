@@ -57,8 +57,12 @@ struct LiveOrchestratorTools: OrchestratorTools {
 
     func openSession(folder: String) throws -> String {
         let expanded = (folder as NSString).expandingTildeInPath
-        guard FileManager.default.fileExists(atPath: expanded) else {
+        var isDirectory: ObjCBool = false
+        guard FileManager.default.fileExists(atPath: expanded, isDirectory: &isDirectory) else {
             throw MCPToolError("folder does not exist: \(expanded)")
+        }
+        guard isDirectory.boolValue else {
+            throw MCPToolError("not a folder: \(expanded)")
         }
         guard let claudeURL = ClaudeCodeBackend.locate() else {
             throw MCPToolError("claude binary not found; install Claude Code and try again")
@@ -71,8 +75,16 @@ struct LiveOrchestratorTools: OrchestratorTools {
         let script = TerminalScript.openWindow(command: command)
         let output = try runAppleScript(script)
 
-        guard let windowID = Int(output) else {
-            throw MCPToolError("unexpected window id from osascript: '\(output)'")
+        // openWindow evaluates to -1 when the set-diff found no new window. A non-positive id
+        // means we have no window to trust — never register a guessed id.
+        guard let windowID = Int(output), windowID > 0 else {
+            throw MCPToolError("Terminal did not return a window id")
+        }
+
+        // claude takes a moment to start. Wait until it is on the new window's tty before
+        // registering, so a later focus/send can never land in a bare shell.
+        guard waitForClaudeOnWindow(windowID) else {
+            throw MCPToolError("the session window opened but claude did not start")
         }
 
         var registry = SessionRegistry.load(from: SessionRegistry.defaultURL())
@@ -82,6 +94,34 @@ struct LiveOrchestratorTools: OrchestratorTools {
         _ = try runAppleScript(TerminalScript.focusWindow(id: windowID))
 
         return "Opened session \(name) in \(expanded)"
+    }
+
+    /// Polls up to ~5s (1s interval) for a `claude`/`node` process on the window's tty.
+    /// Returns false on timeout. Any osascript/ps error is treated as "not yet" and retried.
+    private func waitForClaudeOnWindow(_ windowID: Int) -> Bool {
+        for _ in 0..<5 {
+            if claudeIsOnWindow(windowID) { return true }
+            Thread.sleep(forTimeInterval: 1)
+        }
+        return false
+    }
+
+    private func claudeIsOnWindow(_ windowID: Int) -> Bool {
+        guard let tty = try? runAppleScript(TerminalScript.ttyOfWindow(id: windowID)),
+              !tty.isEmpty else { return false }
+        // `ps -t` wants the tty name without the `/dev/` prefix.
+        let name = tty.hasPrefix("/dev/") ? String(tty.dropFirst("/dev/".count)) : tty
+        let ps = Process()
+        ps.executableURL = URL(fileURLWithPath: "/bin/ps")
+        ps.arguments = ["-t", name, "-o", "comm="]
+        let pipe = Pipe()
+        ps.standardOutput = pipe
+        ps.standardError = Pipe()
+        guard (try? ps.run()) != nil else { return false }
+        let out = String(decoding: pipe.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
+        ps.waitUntilExit()
+        let lower = out.lowercased()
+        return lower.contains("claude") || lower.contains("node")
     }
 
     // MARK: focus_session
@@ -138,8 +178,12 @@ struct LiveOrchestratorTools: OrchestratorTools {
 
     func revealFolder(path: String) throws -> String {
         let expanded = (path as NSString).expandingTildeInPath
-        guard FileManager.default.fileExists(atPath: expanded) else {
+        var isDirectory: ObjCBool = false
+        guard FileManager.default.fileExists(atPath: expanded, isDirectory: &isDirectory) else {
             throw MCPToolError("folder does not exist: \(expanded)")
+        }
+        guard isDirectory.boolValue else {
+            throw MCPToolError("not a folder: \(expanded)")
         }
 
         let process = Process()
