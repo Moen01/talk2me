@@ -101,19 +101,32 @@ public enum OrchestratorLaunch {
 
     /// Returns a JSON string for `--mcp-config` that registers Talk2Me's MCP server.
     ///
-    /// Format: `{"mcpServers":{"talk2me":{"command":"<path>"}}}`.
+    /// Format: `{"mcpServers":{"talk2me":{"command":"<path>"}}}`, with an `"env"` entry carrying
+    /// `TALK2ME_CLAUDE_PATH` added when `claudePath` is non-empty — so the MCP server opens spawned
+    /// sessions with the same claude binary the user chose in Settings.
     ///
-    /// - Parameter serverPath: Absolute path to the MCP server binary.
-    public static func mcpConfigJSON(serverPath: String) -> String {
+    /// - Parameters:
+    ///   - serverPath: Absolute path to the MCP server binary.
+    ///   - claudePath: Custom claude path from Settings, or nil/empty to let the server auto-locate.
+    public static func mcpConfigJSON(serverPath: String, claudePath: String? = nil) -> String {
         // Build manually to avoid Foundation import overhead and guarantee key order.
-        // Escape characters in order: backslash, quote, then control characters.
-        let escaped = serverPath
+        let command = escapeJSONString(serverPath)
+        let trimmedClaude = claudePath?.trimmingCharacters(in: .whitespaces) ?? ""
+        if trimmedClaude.isEmpty {
+            return #"{"mcpServers":{"talk2me":{"command":"\#(command)"}}}"#
+        }
+        let claude = escapeJSONString(trimmedClaude)
+        return #"{"mcpServers":{"talk2me":{"command":"\#(command)","env":{"TALK2ME_CLAUDE_PATH":"\#(claude)"}}}}"#
+    }
+
+    /// Escapes a string for a JSON string literal: backslash, quote, then control characters.
+    private static func escapeJSONString(_ value: String) -> String {
+        value
             .replacingOccurrences(of: "\\", with: "\\\\")
             .replacingOccurrences(of: "\"", with: "\\\"")
             .replacingOccurrences(of: "\n", with: "\\n")
             .replacingOccurrences(of: "\t", with: "\\t")
             .replacingOccurrences(of: "\r", with: "\\r")
-        return #"{"mcpServers":{"talk2me":{"command":"\#(escaped)"}}}"#
     }
 
     // MARK: - Private helpers

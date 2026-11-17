@@ -192,6 +192,36 @@ struct OrchestratorLaunchTests {
         #expect(json.contains("\"/bin/mcp\""))
     }
 
+    @Test func mcpConfigJSONOmitsEnvWhenClaudePathEmpty() {
+        #expect(!OrchestratorLaunch.mcpConfigJSON(serverPath: "/bin/mcp").contains("env"))
+        #expect(!OrchestratorLaunch.mcpConfigJSON(serverPath: "/bin/mcp", claudePath: "").contains("env"))
+        #expect(!OrchestratorLaunch.mcpConfigJSON(serverPath: "/bin/mcp", claudePath: "   ").contains("env"))
+    }
+
+    @Test func mcpConfigJSONEmitsClaudePathInEnv() throws {
+        let json = OrchestratorLaunch.mcpConfigJSON(
+            serverPath: "/bin/mcp", claudePath: "/opt/homebrew/bin/claude")
+        let data = try #require(json.data(using: .utf8))
+        let decoded = try #require(JSONSerialization.jsonObject(with: data) as? [String: Any])
+        let mcpServers = try #require(decoded["mcpServers"] as? [String: Any])
+        let talk2me = try #require(mcpServers["talk2me"] as? [String: Any])
+        #expect(talk2me["command"] as? String == "/bin/mcp")
+        let env = try #require(talk2me["env"] as? [String: Any])
+        #expect(env["TALK2ME_CLAUDE_PATH"] as? String == "/opt/homebrew/bin/claude")
+    }
+
+    @Test func mcpConfigJSONEscapesClaudePath() throws {
+        // A claude path with a quote and a backslash must round-trip through valid JSON.
+        let weird = #"/path/with"quote\back/claude"#
+        let json = OrchestratorLaunch.mcpConfigJSON(serverPath: "/bin/mcp", claudePath: weird)
+        let data = try #require(json.data(using: .utf8))
+        let decoded = try #require(JSONSerialization.jsonObject(with: data) as? [String: Any])
+        let mcpServers = try #require(decoded["mcpServers"] as? [String: Any])
+        let talk2me = try #require(mcpServers["talk2me"] as? [String: Any])
+        let env = try #require(talk2me["env"] as? [String: Any])
+        #expect(env["TALK2ME_CLAUDE_PATH"] as? String == weird)
+    }
+
     @Test func mcpConfigJSONEscapesControlCharacters() throws {
         // Path with newline, tab, and carriage return must be escaped
         let pathWithNewline = "/path/with\nnewline"

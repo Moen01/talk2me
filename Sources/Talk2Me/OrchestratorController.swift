@@ -239,7 +239,9 @@ final class OrchestratorController {
 
     /// Writes the MCP config to `~/Library/Application Support/Talk2Me/mcp.json` and returns its path.
     private func writeMCPConfig() throws -> String {
-        let json = OrchestratorLaunch.mcpConfigJSON(serverPath: Self.mcpServerPath())
+        // Pass the user's custom claude path so spawned sessions use the same binary.
+        let json = OrchestratorLaunch.mcpConfigJSON(
+            serverPath: Self.mcpServerPath(), claudePath: settings.claudePath)
         let url = Self.mcpConfigURL()
         try FileManager.default.createDirectory(
             at: url.deletingLastPathComponent(), withIntermediateDirectories: true)

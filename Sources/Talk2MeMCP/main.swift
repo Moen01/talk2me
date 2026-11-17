@@ -64,7 +64,7 @@ struct LiveOrchestratorTools: OrchestratorTools {
         guard isDirectory.boolValue else {
             throw MCPToolError("not a folder: \(expanded)")
         }
-        guard let claudeURL = ClaudeCodeBackend.locate() else {
+        guard let claudeURL = ClaudeCodeBackend.locate(customPath: customClaudePath) else {
             throw MCPToolError("claude binary not found; install Claude Code and try again")
         }
 
@@ -94,6 +94,14 @@ struct LiveOrchestratorTools: OrchestratorTools {
         _ = try runAppleScript(TerminalScript.focusWindow(id: windowID))
 
         return "Opened session \(name) in \(expanded)"
+    }
+
+    /// The custom claude path the orchestrator threads through the MCP server's env, so spawned
+    /// sessions use the same binary the user chose in Settings. nil/empty → auto-locate.
+    private var customClaudePath: String? {
+        let path = ProcessInfo.processInfo.environment["TALK2ME_CLAUDE_PATH"]?
+            .trimmingCharacters(in: .whitespaces)
+        return (path?.isEmpty == false) ? path : nil
     }
 
     /// Polls up to ~5s (1s interval) for a `claude`/`node` process on the window's tty.
