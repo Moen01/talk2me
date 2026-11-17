@@ -83,8 +83,11 @@ final class StatusBarController: NSObject {
             switch orchestrator.state {
             case .notRunning:
                 orchestratorLine.title = "Orchestrator: not running"
+                startOrchestratorItem.isEnabled = true
             case .running:
                 orchestratorLine.title = "Orchestrator: running"
+                // Disable while running so the user can't start a second instance.
+                startOrchestratorItem.isEnabled = false
             }
         }
     }

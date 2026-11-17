@@ -75,7 +75,12 @@ struct SettingsView: View {
         .onReceive(Timer.publish(every: 2, on: .main, in: .common).autoconnect()) { _ in
             accessibilityGranted = Permissions.accessibilityGranted
             microphoneGranted = Permissions.microphoneStatus == .granted
-            automationStatus = Permissions.automationStatus(bundleID: "com.apple.Terminal")
+            // AEDeterminePermissionToAutomateTarget does an IPC round-trip to tccd;
+            // run it off the main thread to avoid jank, then hop back to update state.
+            Task.detached(priority: .utility) {
+                let status = Permissions.automationStatus(bundleID: "com.apple.Terminal")
+                await MainActor.run { automationStatus = status }
+            }
         }
     }
 
@@ -487,6 +492,13 @@ struct OrchestrateKeyPicker: View {
         return nil
     }
 
+    /// Non-nil when the already-committed orchestrateKey now conflicts because one of the
+    /// other keys changed to match it. This covers the case where the user changes holdKey
+    /// or enables hands-free with a matching key — pendingKey would never fire in that path.
+    private var liveConflict: String? {
+        conflictName(for: orchestrateKey)
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack {
@@ -539,7 +551,13 @@ struct OrchestrateKeyPicker: View {
                     .font(.caption)
                     .foregroundStyle(.orange)
             } else if let pending = pendingKey, let name = conflictName(for: pending) {
+                // User just tried to pick a conflicting key.
                 Text("\(KeyboardLayout.name(of: pending)) is already used as \(name). Choose a different key.")
+                    .font(.caption)
+                    .foregroundStyle(.orange)
+            } else if let name = liveConflict {
+                // Another key changed to now match the committed orchestrateKey.
+                Text("\(KeyboardLayout.name(of: orchestrateKey)) now conflicts with \(name). Choose a different key.")
                     .font(.caption)
                     .foregroundStyle(.orange)
             }
