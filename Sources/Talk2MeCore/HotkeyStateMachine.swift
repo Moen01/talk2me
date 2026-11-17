@@ -84,7 +84,7 @@ public struct HotkeyStateMachine: Sendable {
                 lastTapAt = nil
                 return .stopRecording
             }
-            if heldRoles.contains(.handsFree), let last = lastTapAt, time - last <= doubleTapWindow + tapThreshold {
+            if heldRoles.contains(.handsFree), !heldRoles.contains(.orchestrate), let last = lastTapAt, time - last <= doubleTapWindow + tapThreshold {
                 // Second quick tap: keep the recording that this press started.
                 state = .handsFree
                 lastTapAt = nil

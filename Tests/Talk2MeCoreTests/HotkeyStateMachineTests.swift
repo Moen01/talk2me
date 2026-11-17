@@ -167,6 +167,13 @@ struct HotkeyStateMachineTests {
         _ = m.shortcutDown(.hold, at: 0)
         #expect(m.shortcutUp(.orchestrate, at: 1) == nil)
     }
+
+    @Test func orchestrateQuickTapDoesNotGoHandsFree() {
+        var m = HotkeyStateMachine()
+        _ = m.shortcutDown([.orchestrate, .handsFree], at: 0)
+        #expect(m.shortcutUp([.orchestrate, .handsFree], at: 0.1) == .cancelRecording)   // quick tap must cancel
+        #expect(m.shortcutDown([.orchestrate, .handsFree], at: 0.2) == .startRecording(.orchestrator))
+    }
 }
 
 struct ShortcutKeyTests {
