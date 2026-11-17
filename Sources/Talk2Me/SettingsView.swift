@@ -3,7 +3,7 @@ import SwiftUI
 import Talk2MeCore
 
 enum SettingsPage: String, CaseIterable, Identifiable {
-    case general, hotkey, cleanup, dictionary, snippets, permissions, language
+    case general, hotkey, cleanup, dictionary, snippets, orchestrate, permissions, language
 
     var id: Self { self }
 
@@ -14,6 +14,7 @@ enum SettingsPage: String, CaseIterable, Identifiable {
         case .cleanup: "Cleanup with Claude"
         case .dictionary: "Dictionary"
         case .snippets: "Snippets"
+        case .orchestrate: "Orchestrate"
         case .permissions: "Permissions"
         case .language: "Language"
         }
@@ -26,6 +27,7 @@ enum SettingsPage: String, CaseIterable, Identifiable {
         case .cleanup: "sparkles"
         case .dictionary: "character.book.closed"
         case .snippets: "bolt"
+        case .orchestrate: "arrow.triangle.branch"
         case .permissions: "lock.shield"
         case .language: "globe"
         }
@@ -46,6 +48,7 @@ struct SettingsView: View {
     @State private var testing = false
     @State private var accessibilityGranted = Permissions.accessibilityGranted
     @State private var microphoneGranted = Permissions.microphoneStatus == .granted
+    @State private var automationStatus = Permissions.automationStatus(bundleID: "com.apple.Terminal")
     @State private var launchAtLogin = LaunchAtLogin.isEnabled
     @State private var page: SettingsPage? = .general
 
@@ -72,6 +75,7 @@ struct SettingsView: View {
         .onReceive(Timer.publish(every: 2, on: .main, in: .common).autoconnect()) { _ in
             accessibilityGranted = Permissions.accessibilityGranted
             microphoneGranted = Permissions.microphoneStatus == .granted
+            automationStatus = Permissions.automationStatus(bundleID: "com.apple.Terminal")
         }
     }
 
@@ -83,6 +87,7 @@ struct SettingsView: View {
         case .cleanup: cleanup
         case .dictionary: DictionaryEditor(entries: $settings.dictionary)
         case .snippets: SnippetsEditor(snippets: $settings.snippets)
+        case .orchestrate: orchestrate
         case .permissions: permissions
         case .language: language
         }
@@ -182,6 +187,56 @@ struct SettingsView: View {
         }
     }
 
+    // MARK: - Orchestrate page
+
+    @ViewBuilder
+    private var orchestrate: some View {
+        Section {
+            Toggle("Enable Orchestrate", isOn: $settings.orchestrateEnabled)
+        }
+
+        if settings.orchestrateEnabled {
+            Section("Orchestrate key") {
+                OrchestrateKeyPicker(
+                    orchestrateKey: $settings.orchestrateKey,
+                    holdKey: settings.holdKey,
+                    handsFreeKey: settings.handsFreeEnabled ? settings.handsFreeKey : nil,
+                    recordKey: recordKey,
+                    cancelRecording: cancelRecording
+                )
+            }
+
+            Section("Session folder") {
+                LabeledContent("Root folder") {
+                    HStack {
+                        Text(settings.orchestrateRoot)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                            .truncationMode(.middle)
+                        Button("Choose…") {
+                            let panel = NSOpenPanel()
+                            panel.canChooseDirectories = true
+                            panel.canChooseFiles = false
+                            panel.canCreateDirectories = true
+                            panel.prompt = "Choose"
+                            if panel.runModal() == .OK, let url = panel.url {
+                                settings.orchestrateRoot = url.path
+                            }
+                        }
+                    }
+                }
+            }
+
+            Section {
+                Text("Opens sessions in Terminal.app. Speech on this key goes to the orchestrator, not the focused app.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+    }
+
+    // MARK: - Permissions page
+
     private var permissions: some View {
         Section {
             permissionRow("Accessibility (shortcut keys and pasting)", granted: accessibilityGranted) {
@@ -195,6 +250,30 @@ struct SettingsView: View {
                         Permissions.openMicrophoneSettings()
                     }
                 }
+            }
+            if settings.orchestrateEnabled {
+                automationRow
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var automationRow: some View {
+        HStack {
+            switch automationStatus {
+            case .granted:
+                Label("Automation (Terminal)", systemImage: "checkmark.circle.fill")
+                    .foregroundStyle(Color.green)
+            case .denied:
+                Label("Automation (Terminal) — denied", systemImage: "exclamationmark.triangle.fill")
+                    .foregroundStyle(Color.orange)
+            case .notDetermined:
+                Label("Automation (Terminal) — not yet asked", systemImage: "questionmark.circle")
+                    .foregroundStyle(Color.secondary)
+            }
+            Spacer()
+            if automationStatus != .granted {
+                Button("Open Settings…") { Permissions.openAutomationSettings() }
             }
         }
     }
@@ -376,6 +455,93 @@ struct ShortcutPicker: View {
                 Text("\(KeyboardLayout.name(of: key)) won't type anything in other apps while Talk2Me is running.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
+            }
+        }
+        .onReceive(Permissions.ticks) { _ in
+            let now = Permissions.accessibilityGranted
+            if now != trusted { trusted = now }
+        }
+    }
+}
+
+/// A key picker for the Orchestrate key. Refuses keys that conflict with the hold or hands-free
+/// key by showing an inline error instead of saving the selection.
+struct OrchestrateKeyPicker: View {
+    @Binding var orchestrateKey: ShortcutKey
+    let holdKey: ShortcutKey
+    let handsFreeKey: ShortcutKey?
+    let recordKey: (@escaping (ShortcutKey?) -> Void) -> Void
+    let cancelRecording: () -> Void
+
+    @State private var recording = false
+    @State private var pendingKey: ShortcutKey? = nil
+    @State private var trusted = Permissions.accessibilityGranted
+
+    private var options: [ShortcutKey] {
+        ShortcutKey.presets.contains(orchestrateKey) ? ShortcutKey.presets : ShortcutKey.presets + [orchestrateKey]
+    }
+
+    private func conflictName(for key: ShortcutKey) -> String? {
+        if key == holdKey { return "the hold key" }
+        if let hf = handsFreeKey, key == hf { return "the hands-free key" }
+        return nil
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack {
+                Picker("Orchestrate key", selection: Binding(
+                    get: { orchestrateKey },
+                    set: { candidate in
+                        if conflictName(for: candidate) == nil {
+                            orchestrateKey = candidate
+                            pendingKey = nil
+                        } else {
+                            // Reject: keep old value, show explanation via pendingKey
+                            pendingKey = candidate
+                        }
+                    }
+                )) {
+                    ForEach(options, id: \.self) { option in
+                        Text(KeyboardLayout.name(of: option)).tag(option)
+                    }
+                }
+                Button(recording ? "Cancel" : "Record a key…") {
+                    if recording {
+                        cancelRecording()
+                        return
+                    }
+                    pendingKey = nil
+                    recording = true
+                    recordKey { captured in
+                        recording = false
+                        guard let captured else { return }
+                        if conflictName(for: captured) == nil {
+                            orchestrateKey = captured
+                        } else {
+                            pendingKey = captured
+                        }
+                    }
+                }
+                .disabled(!trusted && !recording)
+            }
+
+            if !trusted {
+                HStack {
+                    Text("Talk2Me can't see key presses without Accessibility access.")
+                        .font(.caption)
+                        .foregroundStyle(.orange)
+                    Button("Allow Accessibility…") { Permissions.requestAccessibility() }
+                        .controlSize(.small)
+                }
+            } else if recording {
+                Text("Press the key you want to use… (Esc cancels)")
+                    .font(.caption)
+                    .foregroundStyle(.orange)
+            } else if let pending = pendingKey, let name = conflictName(for: pending) {
+                Text("\(KeyboardLayout.name(of: pending)) is already used as \(name). Choose a different key.")
+                    .font(.caption)
+                    .foregroundStyle(.orange)
             }
         }
         .onReceive(Permissions.ticks) { _ in

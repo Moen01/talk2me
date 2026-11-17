@@ -23,11 +23,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         controller.sendToOrchestrator = { [weak orchestrator] text in
             await orchestrator?.send(text) ?? "Orchestrator unavailable."
         }
-        statusBar = StatusBarController(controller: controller, actions: .init(
-            openSettings: { [weak self] in self?.showSettings() },
-            openSetupGuide: { [weak self] in self?.showOnboarding() },
-            openAbout: { [weak self] in self?.showAbout() }
-        ))
+        statusBar = StatusBarController(
+            controller: controller,
+            orchestrator: orchestrator,
+            settings: settings,
+            actions: .init(
+                openSettings: { [weak self] in self?.showSettings() },
+                openSetupGuide: { [weak self] in self?.showOnboarding() },
+                openAbout: { [weak self] in self?.showAbout() },
+                startOrchestrator: { [weak orchestrator] in Task { await orchestrator?.startIfNeeded() } }
+            )
+        )
         controller.onChange = { [weak self] in
             guard let self else { return }
             self.statusBar.refresh()
