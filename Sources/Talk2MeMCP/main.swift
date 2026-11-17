@@ -110,22 +110,24 @@ struct LiveOrchestratorTools: OrchestratorTools {
         var registry = SessionRegistry.load(from: SessionRegistry.defaultURL())
         if registry.sessions.isEmpty { return "No sessions yet." }
 
-        // Check which windows still exist and build the display list from the original set.
-        var lines: [String] = []
-        var anyDead = false
+        // Build a single liveness map by checking each window once.
+        var aliveMap: [Int: Bool] = [:]
         for session in registry.sessions {
             let existsOutput = (try? runAppleScript(TerminalScript.windowExists(id: session.windowID))) ?? "false"
-            let alive = existsOutput == "true"
-            if !alive { anyDead = true }
+            aliveMap[session.windowID] = (existsOutput == "true")
+        }
+
+        // Build the display list from the original set using the pre-computed map.
+        var lines: [String] = []
+        for session in registry.sessions {
+            let alive = aliveMap[session.windowID] ?? false
             lines.append("\(session.name) — \(session.folder) (\(alive ? "alive" : "dead"))")
         }
 
         // Persist pruned registry so dead sessions don't accumulate.
+        let anyDead = aliveMap.values.contains(false)
         if anyDead {
-            registry = registry.pruned { id in
-                let out = (try? runAppleScript(TerminalScript.windowExists(id: id))) ?? "false"
-                return out == "true"
-            }
+            registry = registry.pruned { id in aliveMap[id] ?? false }
             try? registry.save(to: SessionRegistry.defaultURL())
         }
 
@@ -145,6 +147,10 @@ struct LiveOrchestratorTools: OrchestratorTools {
         process.arguments = [expanded]
         try process.run()
         process.waitUntilExit()
+
+        guard process.terminationStatus == 0 else {
+            throw MCPToolError("open failed for \(expanded) (exit code \(process.terminationStatus))")
+        }
 
         return "Opened \(expanded) in Finder"
     }
