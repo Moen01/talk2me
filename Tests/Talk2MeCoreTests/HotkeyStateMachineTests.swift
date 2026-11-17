@@ -177,4 +177,20 @@ struct ShortcutKeyTests {
         #expect(ShortcutBindings.make(hold: .fn, handsFree: nil) == [.fn: .hold])
         #expect(ShortcutBindings.make(hold: .fn, handsFree: .rightOption) == [.fn: .hold, .rightOption: .handsFree])
     }
+
+    @Test func orchestrateKeyGetsItsOwnRole() {
+        let b = ShortcutBindings.make(hold: .fn, handsFree: .fn, orchestrate: .leftOption)
+        #expect(b[.leftOption] == .orchestrate)
+        #expect(b[.fn] == [.hold, .handsFree])
+    }
+
+    @Test func orchestrateEqualToHoldKeyIsDropped() {
+        let b = ShortcutBindings.make(hold: .fn, handsFree: nil, orchestrate: .fn)
+        #expect(b == [.fn: .hold])
+    }
+
+    @Test func orchestrateEqualToHandsFreeKeyIsDropped() {
+        let b = ShortcutBindings.make(hold: .fn, handsFree: .rightOption, orchestrate: .rightOption)
+        #expect(b[.rightOption] == .handsFree)
+    }
 }
