@@ -197,3 +197,49 @@ picker. Terminal app is fixed to Terminal.app in v1 (stated in the UI).
 
 - His original message trailed off: "maybe I should also have, for now, …" — unknown
   extra wish, possibly a third function. Not blocking v1.
+
+## Spike results
+
+### REPL submission via `do script … in window id N` (2026-11-17)
+
+Verified the unproven delivery assumption against a live `claude` interactive REPL.
+Result: **`do script` submits the line** — no paste fallback needed.
+
+Procedure and verbatim outcome:
+
+1. Opened a Terminal window running plain `claude` with the repo's own openWindow
+   script form (set-diff), captured window id `1787`:
+   ```
+   osascript -e 'tell application "Terminal"
+       set prevIDs to (get id of windows)
+       do script "cd /tmp && /opt/homebrew/bin/claude"
+       activate
+       set nextIDs to (get id of windows)
+       ... (set-diff) ... → 1787
+   end tell'
+   ```
+2. Waited ~6s for the REPL to draw, then sent the test line with the exact send form:
+   ```
+   osascript -e 'tell application "Terminal"
+       do script "hello from talk2me spike" in window id 1787
+   end tell'
+   ```
+3. Waited ~8s, then read the tab:
+   `osascript -e 'tell application "Terminal" to contents of selected tab of window id 1787'`.
+   Observed (excerpt):
+   ```
+   ❯ hello from talk2me spike
+
+   ⏺ Hear you. Talk2me spike work. What need build?
+
+   ✻ Baked for 4s
+   ```
+   The REPL shows the text as a **sent** message (`❯` prompt line) and claude
+   **responded** — so `do script` submits a line (newline / `\r`) into the running
+   interactive REPL. It did not sit unsubmitted.
+4. Closed the window: `tell application "Terminal" to close window id 1787 saving no`
+   (exit 0).
+
+Conclusion: `OrchestratorController.send` keeps the single `do script` delivery path.
+The activate + Cmd+V + Return paste fallback described under "Speech path" is **not
+needed** and is not implemented.
