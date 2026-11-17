@@ -21,6 +21,11 @@ final class OrchestratorController {
 
     private let settings: AppSettings
 
+    /// Single-flight guard for `ensureLive()`. When a spawn is in progress any
+    /// concurrent call to `send()`/`startIfNeeded()` awaits the same task instead
+    /// of racing through the no-registry-id check and opening a second window.
+    private var ensureTask: Task<Live, Never>?
+
     init(settings: AppSettings) {
         self.settings = settings
     }
@@ -74,7 +79,21 @@ final class OrchestratorController {
 
     /// Reattaches to the registered orchestrator window when it is still alive, otherwise spawns a
     /// fresh one. Keeps `state` and the registry in sync with what it finds.
+    ///
+    /// Single-flight: concurrent callers (e.g. two rapid `send()` calls) share one in-flight task.
+    /// Because this method is `@MainActor` the check-and-set of `ensureTask` is atomic between
+    /// suspension points — there is no data race.
     private func ensureLive() async -> Live {
+        if let existing = ensureTask {
+            return await existing.value
+        }
+        let task = Task { await self._doEnsureLive() }
+        ensureTask = task
+        defer { ensureTask = nil }
+        return await task.value
+    }
+
+    private func _doEnsureLive() async -> Live {
         let registryURL = SessionRegistry.defaultURL()
         var registry = SessionRegistry.load(from: registryURL)
 

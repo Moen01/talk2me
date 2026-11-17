@@ -32,17 +32,36 @@ public enum TerminalScript {
     /// Builds an AppleScript that opens a new Terminal window with a command.
     ///
     /// The script activates Terminal and returns the new window's ID so osascript can print it.
-    /// `do script` with no `in` target always opens a NEW window, and that window is frontmost
-    /// (`window 1`) the instant the command returns — so we read its id there. The more direct
-    /// `id of window of newTab` reference is broken on macOS 26 (it raises -1728, "Can't get window
-    /// of tab 1"), so we cannot use the tab the command returns.
+    ///
+    /// We use a set-diff approach: snapshot `id of windows` before the `do script`, then find the
+    /// one new id that appeared afterward. This is race-free even when other windows exist. We
+    /// avoid both the macOS 26 `-1728` bug (`id of window of newTab`) and the `window 1` race
+    /// (another window could become frontmost between our `do script` and our id read).
+    ///
+    /// Note: `before`/`after` are AppleScript reserved words (prepositions), so we use
+    /// `prevIDs`/`nextIDs`. We also cannot use a bare `return` inside a tell-block; instead we
+    /// capture the result in `newID` and make it the final expression of the script.
+    /// As a last-resort fallback `id of window 1` is returned when the diff yields nothing.
     public static func openWindow(command: String) -> String {
         let escaped = escape(command)
         return """
         tell application "Terminal"
+            set prevIDs to (get id of windows)
             do script "\(escaped)"
             activate
-            (get id of window 1)
+            set nextIDs to (get id of windows)
+            set newID to -1
+            repeat with w in nextIDs
+                if prevIDs does not contain (w as integer) then
+                    set newID to (w as integer)
+                    exit repeat
+                end if
+            end repeat
+            if newID is -1 then
+                get id of window 1
+            else
+                newID
+            end if
         end tell
         """
     }

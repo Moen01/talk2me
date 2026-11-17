@@ -15,9 +15,20 @@ struct TerminalScriptTests {
 
     @Test func openWindowCreatesNewWindow() {
         let s = TerminalScript.openWindow(command: "ls")
-        #expect(s.contains("do script"))
-        #expect(s.contains("(get id of window 1)"))
+        // set-diff form: snapshot prevIDs, diff nextIDs, capture in newID
+        #expect(s.contains("set prevIDs to (get id of windows)"))
+        #expect(s.contains(#"do script "ls""#))
+        #expect(s.contains("set nextIDs to (get id of windows)"))
+        #expect(s.contains("repeat with w in nextIDs"))
+        #expect(s.contains("prevIDs does not contain (w as integer)"))
         #expect(s.contains("activate"))
+        // last-resort fallback
+        #expect(s.contains("id of window 1"))
+    }
+
+    @Test func openWindowEscapesCommand() {
+        let s = TerminalScript.openWindow(command: #"echo "hi""#)
+        #expect(s.contains(#"do script "echo \"hi\"""#))
     }
 
     @Test func focusWindowSetsFrontmost() {
