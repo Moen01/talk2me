@@ -20,6 +20,8 @@ final class DictationController: ObservableObject {
     var onChange: (() -> Void)?
     /// Microphone loudness (0...1) while recording, on the main thread.
     var onLevel: ((Float) -> Void)?
+    /// Routes orchestrator dictations. Set by AppDelegate after creating OrchestratorController.
+    var sendToOrchestrator: ((String) async -> String)?
 
     private func changed() {
         objectWillChange.send()
@@ -168,6 +170,8 @@ final class DictationController: ObservableObject {
             }
         }
         current = nil
+        // A cancelled recording must not leave an orchestrator target visible to the next recording.
+        pendingTarget = .focusedApp
         if phase == .recording { phase = .idle }
     }
 
@@ -178,11 +182,15 @@ final class DictationController: ObservableObject {
             return
         }
         self.current = nil
+        // Consume the target now so it cannot be overwritten by a concurrent startRecording.
+        let target = pendingTarget
+        pendingTarget = .focusedApp
         phase = .transcribing
-        Task { await finish(current.session, started: current.started) }
+        Task { await finish(current.session, started: current.started, target: target) }
     }
 
-    private func finish(_ session: DictationSession, started: Task<Error?, Never>) async {
+    private func finish(_ session: DictationSession, started: Task<Error?, Never>,
+                        target: HotkeyStateMachine.RecordingTarget) async {
         try? await Task.sleep(for: releaseTail)
         capture.stop()
 
@@ -218,6 +226,15 @@ final class DictationController: ObservableObject {
         }
         guard !raw.isEmpty else {
             lastResult = "Heard nothing."
+            phase = .idle
+            return
+        }
+
+        // Orchestrate path: apply dictionary, skip snippets and cleanup, send to the orchestrator session.
+        if target == .orchestrator {
+            let transcript = PersonalDictionary.apply(settings.dictionary, to: raw)
+            phase = .inserting
+            lastResult = await sendToOrchestrator?(transcript) ?? "Orchestrate is not wired up."
             phase = .idle
             return
         }

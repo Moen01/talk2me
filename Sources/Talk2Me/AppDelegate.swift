@@ -7,6 +7,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let settings = AppSettings()
     private let hotkeys = HotkeyMonitor()
     private var controller: DictationController!
+    private var orchestrator: OrchestratorController!
     private var statusBar: StatusBarController!
     private let indicator = RecordingIndicator()
     private var settingsWindow: NSWindow?
@@ -17,6 +18,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         installMainMenu()
         controller = DictationController(settings: settings)
+        orchestrator = OrchestratorController(settings: settings)
+        orchestrator.onChange = { [weak self] in self?.statusBar.refresh() }
+        controller.sendToOrchestrator = { [weak orchestrator] text in
+            await orchestrator?.send(text) ?? "Orchestrator unavailable."
+        }
         statusBar = StatusBarController(controller: controller, actions: .init(
             openSettings: { [weak self] in self?.showSettings() },
             openSetupGuide: { [weak self] in self?.showOnboarding() },
@@ -42,11 +48,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             .sink { [weak self] value in self?.hotkeys.suppressFnKey = value }
             .store(in: &subscriptions)
         // @Published fires before the stored value changes, so read the new bindings on the next turn.
-        Publishers.Merge3(
-            settings.$holdKey.map { _ in () },
-            settings.$handsFreeKey.map { _ in () },
-            settings.$handsFreeEnabled.map { _ in () }
-        )
+        // MergeMany lets us include orchestrate keys alongside the existing three publishers.
+        Publishers.MergeMany([
+            settings.$holdKey.map { _ in () }.eraseToAnyPublisher(),
+            settings.$handsFreeKey.map { _ in () }.eraseToAnyPublisher(),
+            settings.$handsFreeEnabled.map { _ in () }.eraseToAnyPublisher(),
+            settings.$orchestrateEnabled.map { _ in () }.eraseToAnyPublisher(),
+            settings.$orchestrateKey.map { _ in () }.eraseToAnyPublisher(),
+        ])
         .receive(on: RunLoop.main)
         .sink { [weak self] in
             guard let self else { return }
