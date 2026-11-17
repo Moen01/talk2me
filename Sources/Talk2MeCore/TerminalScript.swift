@@ -32,15 +32,17 @@ public enum TerminalScript {
     /// Builds an AppleScript that opens a new Terminal window with a command.
     ///
     /// The script activates Terminal and returns the new window's ID so osascript can print it.
-    /// We capture the tab that `do script` returns and read its window's id — reading
-    /// `window 1` instead would race with other windows coming to the front.
+    /// `do script` with no `in` target always opens a NEW window, and that window is frontmost
+    /// (`window 1`) the instant the command returns — so we read its id there. The more direct
+    /// `id of window of newTab` reference is broken on macOS 26 (it raises -1728, "Can't get window
+    /// of tab 1"), so we cannot use the tab the command returns.
     public static func openWindow(command: String) -> String {
         let escaped = escape(command)
         return """
         tell application "Terminal"
-            set newTab to do script "\(escaped)"
+            do script "\(escaped)"
             activate
-            (get id of window of newTab)
+            (get id of window 1)
         end tell
         """
     }

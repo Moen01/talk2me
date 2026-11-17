@@ -18,6 +18,9 @@ final class AppSettings: ObservableObject {
         static let dictionary = "dictionary"
         static let snippets = "snippets"
         static let onboarded = "hasOpenedSettings"
+        static let orchestrateEnabled = "orchestrateEnabled"
+        static let orchestrateKeyCode = "orchestrateKeyCode"
+        static let orchestrateRoot = "orchestrateRoot"
     }
 
     private let defaults: UserDefaults
@@ -32,9 +35,18 @@ final class AppSettings: ObservableObject {
     @Published var handsFreeEnabled: Bool { didSet { defaults.set(handsFreeEnabled, forKey: Key.handsFreeEnabled) } }
     /// The key double-tapped to start hands-free mode. Usually the same as the hold key.
     @Published var handsFreeKey: ShortcutKey { didSet { defaults.set(Int(handsFreeKey.keyCode), forKey: Key.handsFreeKeyCode) } }
+    @Published var orchestrateEnabled: Bool { didSet { defaults.set(orchestrateEnabled, forKey: Key.orchestrateEnabled) } }
+    /// The key held to talk to the orchestrator instead of the focused app.
+    @Published var orchestrateKey: ShortcutKey { didSet { defaults.set(Int(orchestrateKey.keyCode), forKey: Key.orchestrateKeyCode) } }
+    /// The folder the orchestrator session starts in.
+    @Published var orchestrateRoot: String { didSet { defaults.set(orchestrateRoot, forKey: Key.orchestrateRoot) } }
 
     var shortcutBindings: [ShortcutKey: ShortcutRoles] {
-        ShortcutBindings.make(hold: holdKey, handsFree: handsFreeEnabled ? handsFreeKey : nil)
+        ShortcutBindings.make(
+            hold: holdKey,
+            handsFree: handsFreeEnabled ? handsFreeKey : nil,
+            orchestrate: orchestrateEnabled ? orchestrateKey : nil
+        )
     }
     @Published var claudePath: String { didSet { defaults.set(claudePath, forKey: Key.claudePath) } }
     @Published var extraInstructions: String { didSet { defaults.set(extraInstructions, forKey: Key.extraInstructions) } }
@@ -76,6 +88,9 @@ final class AppSettings: ObservableObject {
         holdKey = storedKey(Key.holdKeyCode) ?? .fn
         handsFreeEnabled = defaults.object(forKey: Key.handsFreeEnabled) as? Bool ?? true
         handsFreeKey = storedKey(Key.handsFreeKeyCode) ?? .fn
+        orchestrateEnabled = defaults.object(forKey: Key.orchestrateEnabled) as? Bool ?? false
+        orchestrateKey = storedKey(Key.orchestrateKeyCode) ?? .leftOption
+        orchestrateRoot = defaults.string(forKey: Key.orchestrateRoot) ?? NSHomeDirectory()
         claudePath = defaults.string(forKey: Key.claudePath) ?? ""
         extraInstructions = defaults.string(forKey: Key.extraInstructions) ?? ""
         dictionary = defaults.data(forKey: Key.dictionary)

@@ -16,7 +16,7 @@ struct TerminalScriptTests {
     @Test func openWindowCreatesNewWindow() {
         let s = TerminalScript.openWindow(command: "ls")
         #expect(s.contains("do script"))
-        #expect(s.contains("(get id of window of newTab)"))
+        #expect(s.contains("(get id of window 1)"))
         #expect(s.contains("activate"))
     }
 
