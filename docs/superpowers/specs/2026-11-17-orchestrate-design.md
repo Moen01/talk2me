@@ -75,8 +75,10 @@ controlled traffic switch between projects and sessions.
 
 - `ShortcutRoles` gains a third option, `orchestrate`, alongside `hold` and
   `handsFree` (`Sources/Talk2MeCore/ShortcutKey.swift`).
-- Settings gets a key picker for it, using the existing capture UI. Default: off
-  (no key bound) until the user picks one; suggested preset Right Command.
+- Settings gets a key picker for it, using the existing capture UI. Default key:
+  **Left Option** (Andreas's choice). Left Option still types special characters
+  (Option+2, Option+Shift+8, …) because a shortcut key used together with another key
+  is ignored, the same way Fn+Delete works today.
 - The recording pipeline is the same one dictation uses. The state machine / controller
   must carry *which role started the recording*, so the finish step routes to the
   orchestrator instead of pasting. Exact state-machine shape is left to the builder;
@@ -166,6 +168,7 @@ picker. Terminal app is fixed to Terminal.app in v1 (stated in the UI).
 - Approach 2 (terminal-hosted orchestrator + Talk2Me MCP tools).
 - Separate terminal for the orchestrator; he controls spawned sessions through normal
   push-to-talk into the focused window.
+- Default orchestrate key: Left Option.
 
 ## My calls (correctable)
 
