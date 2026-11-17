@@ -8,6 +8,7 @@ struct SessionRegistryTests {
 
     @Test func roundTripSaveAndLoad() throws {
         let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: dir) }
         let url = dir.appendingPathComponent("sessions.json")
 
         var registry = SessionRegistry()
@@ -22,10 +23,9 @@ struct SessionRegistryTests {
 
     @Test func saveCreatesParentDirectory() throws {
         // Parent dir does not exist yet — save must create it.
-        let dir = FileManager.default.temporaryDirectory
-            .appendingPathComponent(UUID().uuidString)
-            .appendingPathComponent("nested")
-        let url = dir.appendingPathComponent("sessions.json")
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let url = root.appendingPathComponent("nested/sessions.json")
 
         try SessionRegistry().save(to: url)
         #expect(FileManager.default.fileExists(atPath: url.path))
@@ -43,6 +43,7 @@ struct SessionRegistryTests {
 
     @Test func corruptFileLoadsAsEmpty() throws {
         let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: dir) }
         try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         let url = dir.appendingPathComponent("sessions.json")
         try "not valid json }{".write(to: url, atomically: true, encoding: .utf8)
@@ -67,6 +68,17 @@ struct SessionRegistryTests {
         #expect(first  == "catacloud-api")
         #expect(second == "catacloud-api-2")
         #expect(third  == "catacloud-api-3")
+    }
+
+    @Test func registeringTheSameFolderTwiceGivesTwoNamedSessions() {
+        // Two Terminal windows can host sessions in the same folder, so the registry
+        // does not deduplicate by folder path — each registration gets its own name.
+        var registry = SessionRegistry()
+        let first  = registry.register(folder: "/tmp/myproject", windowID: 1)
+        let second = registry.register(folder: "/tmp/myproject", windowID: 2)
+        #expect(first == "myproject")
+        #expect(second == "myproject-2")
+        #expect(registry.sessions.count == 2)
     }
 
     @Test func registerStoresSession() {
