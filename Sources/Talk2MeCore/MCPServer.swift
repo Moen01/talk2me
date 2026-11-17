@@ -119,6 +119,9 @@ public struct MCPServer {
         } catch ToolDispatchError.unknownTool {
             // Unknown tool name is a JSON-RPC invalid-params error per spec.
             return errorResponse(id: id, code: -32602, message: "Unknown tool: \(name)")
+        } catch ToolDispatchError.invalidArguments(let message) {
+            // Invalid or missing required argument is a JSON-RPC invalid-params error.
+            return errorResponse(id: id, code: -32602, message: message)
         } catch {
             // Tool itself threw — this is a result, NOT a JSON-RPC error.
             let message = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
@@ -128,20 +131,27 @@ public struct MCPServer {
 
     private enum ToolDispatchError: Error {
         case unknownTool
+        case invalidArguments(String)
     }
 
     private func dispatch(name: String, arguments: [String: Any]) throws -> String {
         switch name {
         case "open_session":
-            let folder = arguments["folder"] as? String ?? ""
+            guard let folder = arguments["folder"] as? String else {
+                throw ToolDispatchError.invalidArguments("open_session requires argument 'folder' of type string")
+            }
             return try tools.openSession(folder: folder)
         case "focus_session":
-            let sessionName = arguments["name"] as? String ?? ""
+            guard let sessionName = arguments["name"] as? String else {
+                throw ToolDispatchError.invalidArguments("focus_session requires argument 'name' of type string")
+            }
             return try tools.focusSession(name: sessionName)
         case "list_sessions":
             return try tools.listSessions()
         case "reveal_folder":
-            let path = arguments["path"] as? String ?? ""
+            guard let path = arguments["path"] as? String else {
+                throw ToolDispatchError.invalidArguments("reveal_folder requires argument 'path' of type string")
+            }
             return try tools.revealFolder(path: path)
         default:
             throw ToolDispatchError.unknownTool
@@ -184,8 +194,17 @@ public struct MCPServer {
 
     // MARK: - Encoding
 
+    // Precomputed fallback for encoding failures. All response dicts are built
+    // from string literals and cannot fail to encode, but this provides a safe
+    // last resort for a long-running server.
+    private static let internalErrorResponse = Data(
+        "{\"jsonrpc\":\"2.0\",\"id\":null,\"error\":{\"code\":-32603,\"message\":\"internal encoding error\"}}\n".utf8
+    )
+
     private func encode(_ dict: [String: Any]) -> Data? {
-        guard var data = try? JSONSerialization.data(withJSONObject: dict) else { return nil }
+        guard var data = try? JSONSerialization.data(withJSONObject: dict) else {
+            return MCPServer.internalErrorResponse
+        }
         data.append(0x0A) // newline delimiter for the stdio protocol
         return data
     }

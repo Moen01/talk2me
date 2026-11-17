@@ -419,6 +419,63 @@ struct MCPServerTests {
         #expect(dict["id"] is NSNull)
     }
 
+    // MARK: - tools/call: invalid argument validation
+
+    @Test func toolsCallOpenSessionWithNoArgumentsReturnsError32602() throws {
+        let server = MCPServer(tools: StubTools())
+        let request = try jsonLine([
+            "jsonrpc": "2.0",
+            "id": 40,
+            "method": "tools/call",
+            "params": ["name": "open_session"]
+            // Note: no "arguments" key at all
+        ])
+        let response = try #require(server.handle(request))
+        let dict = try decode(response)
+        // Must be a JSON-RPC error, not a result
+        #expect(dict["result"] == nil)
+        let error = try #require(dict["error"] as? [String: Any])
+        #expect(error["code"] as? Int == -32602)
+    }
+
+    @Test func toolsCallOpenSessionWithWrongArgumentTypeReturnsError32602() throws {
+        let server = MCPServer(tools: StubTools())
+        let request = try jsonLine([
+            "jsonrpc": "2.0",
+            "id": 41,
+            "method": "tools/call",
+            "params": ["name": "open_session", "arguments": ["folder": 42]]
+            // folder is a number, not a string
+        ])
+        let response = try #require(server.handle(request))
+        let dict = try decode(response)
+        // Must be a JSON-RPC error, not a result
+        #expect(dict["result"] == nil)
+        let error = try #require(dict["error"] as? [String: Any])
+        #expect(error["code"] as? Int == -32602)
+    }
+
+    @Test func toolsCallListSessionsWithoutArgumentsStillSucceeds() throws {
+        var stub = StubTools()
+        stub.listSessionsResult = "[]"
+        let server = MCPServer(tools: stub)
+        let request = try jsonLine([
+            "jsonrpc": "2.0",
+            "id": 42,
+            "method": "tools/call",
+            "params": ["name": "list_sessions"]
+            // Note: no "arguments" key — list_sessions takes no required params
+        ])
+        let response = try #require(server.handle(request))
+        let dict = try decode(response)
+        // Must succeed (not an error)
+        #expect(dict["error"] == nil)
+        let result = try #require(dict["result"] as? [String: Any])
+        #expect(result["isError"] as? Bool == false)
+        let content = try #require(result["content"] as? [[String: Any]])
+        #expect(content.first?["text"] as? String == "[]")
+    }
+
     // MARK: - jsonrpc field in response
 
     @Test func responseAlwaysHasJsonrpc20() throws {
