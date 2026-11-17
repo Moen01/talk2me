@@ -476,6 +476,36 @@ struct MCPServerTests {
         #expect(content.first?["text"] as? String == "[]")
     }
 
+    // MARK: - id edge cases
+
+    @Test func idZeroIsARequestNotANotification() throws {
+        // id: 0 is falsy in some languages — it must still be treated as a request,
+        // not swallowed as a notification.
+        let server = MCPServer(tools: StubTools())
+        let request = try jsonLine([
+            "jsonrpc": "2.0",
+            "id": 0,
+            "method": "tools/list"
+        ])
+        let response = try #require(server.handle(request))
+        let dict = try decode(response)
+        #expect(dict["id"] as? Int == 0)
+        #expect(dict["result"] != nil)
+    }
+
+    @Test func stringIdRoundTrips() throws {
+        // JSON-RPC allows string ids; they must be echoed back unchanged.
+        let server = MCPServer(tools: StubTools())
+        let request = try jsonLine([
+            "jsonrpc": "2.0",
+            "id": "req-abc",
+            "method": "tools/list"
+        ])
+        let response = try #require(server.handle(request))
+        let dict = try decode(response)
+        #expect(dict["id"] as? String == "req-abc")
+    }
+
     // MARK: - jsonrpc field in response
 
     @Test func responseAlwaysHasJsonrpc20() throws {
