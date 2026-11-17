@@ -1,5 +1,3 @@
-import Foundation
-
 /// Builds AppleScript source text for controlling Terminal.app.
 ///
 /// These functions are pure string builders that return AppleScript commands
@@ -34,13 +32,15 @@ public enum TerminalScript {
     /// Builds an AppleScript that opens a new Terminal window with a command.
     ///
     /// The script activates Terminal and returns the new window's ID so osascript can print it.
+    /// We capture the tab that `do script` returns and read its window's id — reading
+    /// `window 1` instead would race with other windows coming to the front.
     public static func openWindow(command: String) -> String {
         let escaped = escape(command)
         return """
         tell application "Terminal"
-            do script "\(escaped)"
+            set newTab to do script "\(escaped)"
             activate
-            (get id of window 1)
+            (get id of window of newTab)
         end tell
         """
     }
@@ -59,7 +59,6 @@ public enum TerminalScript {
     public static func focusWindow(id: Int) -> String {
         return """
         tell application "Terminal"
-            set frontmost to true
             set frontmost of window id \(id) to true
             activate
         end tell
