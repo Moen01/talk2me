@@ -113,9 +113,10 @@ the front. Text must be AppleScript-escaped (quotes, backslashes).
   an in-terminal approval menu on first use of each tool — a voice channel cannot drive
   that menu, so the voice flow would break mid-sentence. Policy: pre-approve the
   Talk2Me MCP tools (`mcp__talk2me__*`), the read-only built-ins (Read, Glob, Grep)
-  and a short allowlist of read-only Bash prefixes (`ls`, `find`, `tree`,
-  `git status`, `git log`) via `--allowedTools`. Edit, Write and NotebookEdit are hard-
-  disallowed. Any other Bash command still raises Claude Code's normal visible prompt
+  and a short allowlist of write-proof Bash prefixes (`ls`, `git status`) via
+  `--allowedTools`. `find`, `tree` and `git log` are deliberately excluded because each
+  can write to disk (`find -delete`/`-exec`, `tree -o`, `git log --output`). Edit, Write
+  and NotebookEdit are hard-disallowed. Any other Bash command still raises Claude Code's normal visible prompt
   in the terminal — deliberate: the voice verbs never block, edits are mechanically
   impossible, and anything unexpected is gated in plain sight rather than silently
   allowed or denied. The first-launch "do you trust this folder?" dialog is handled

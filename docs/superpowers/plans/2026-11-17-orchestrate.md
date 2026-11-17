@@ -16,7 +16,7 @@
 - No new third-party dependencies; MCP server is hand-rolled JSON-RPC 2.0 over stdio.
 - Terminal.app only in v1; state this in the Settings UI.
 - Orchestrator may never edit files: `--disallowedTools "Edit,Write,NotebookEdit"` always present.
-- Pre-approved tools, exactly: `mcp__talk2me__*`, `Read`, `Glob`, `Grep`, `Bash(ls:*)`, `Bash(find:*)`, `Bash(tree:*)`, `Bash(git status:*)`, `Bash(git log:*)`.
+- Pre-approved tools, exactly: `mcp__talk2me__*`, `Read`, `Glob`, `Grep`, `Bash(ls:*)`, `Bash(git status:*)`. (No `find`/`tree`/`git log`: each can write to disk — `find -delete`/`-exec`, `tree -o`, `git log --output` — so they are excluded.)
 - Launch flags, exactly: `--append-system-prompt`, `--mcp-config`, `--strict-mcp-config`, `--allowedTools`, `--disallowedTools`.
 - Default orchestrate key: Left Option (`ShortcutKey.leftOption`); feature off until enabled in Settings (my call).
 - Registry file: `~/Library/Application Support/Talk2Me/sessions.json`.

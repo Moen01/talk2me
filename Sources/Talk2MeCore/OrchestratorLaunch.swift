@@ -11,17 +11,16 @@ public enum OrchestratorLaunch {
     /// Tools the orchestrator is allowed to call.
     ///
     /// Limited to read-only exploration and the Talk2Me MCP server so the
-    /// orchestrator can navigate sessions without touching project files.
+    /// orchestrator can navigate sessions without touching project files. The Bash
+    /// prefixes are write-proof: `find` (`-delete`/`-exec`), `tree -o` and
+    /// `git log --output` can all write, so only `ls` and `git status` are allowed.
     public static let allowedTools: [String] = [
         "mcp__talk2me__*",
         "Read",
         "Glob",
         "Grep",
         "Bash(ls:*)",
-        "Bash(find:*)",
-        "Bash(tree:*)",
         "Bash(git status:*)",
-        "Bash(git log:*)",
     ]
 
     /// Tools the orchestrator must never call.

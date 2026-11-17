@@ -13,11 +13,16 @@ struct OrchestratorLaunchTests {
             "Glob",
             "Grep",
             "Bash(ls:*)",
-            "Bash(find:*)",
-            "Bash(tree:*)",
             "Bash(git status:*)",
-            "Bash(git log:*)",
         ])
+    }
+
+    @Test func allowedToolsHasNoWriteCapableBashPrefixes() {
+        // find (-delete/-exec), tree (-o) and git log (--output) can all write to disk.
+        let joined = OrchestratorLaunch.allowedTools.joined(separator: ",")
+        #expect(!joined.contains("Bash(find"))
+        #expect(!joined.contains("Bash(tree"))
+        #expect(!joined.contains("Bash(git log"))
     }
 
     @Test func disallowedToolsExactList() {
