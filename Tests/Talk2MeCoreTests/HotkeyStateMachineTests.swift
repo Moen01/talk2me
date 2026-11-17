@@ -7,14 +7,14 @@ private let both: ShortcutRoles = [.hold, .handsFree]
 struct HotkeyStateMachineTests {
     @Test func holdingTheKeyRecordsUntilRelease() {
         var machine = HotkeyStateMachine()
-        #expect(machine.shortcutDown(both, at: 10.0) == .startRecording)
+        #expect(machine.shortcutDown(both, at: 10.0) == .startRecording(.focusedApp))
         #expect(machine.shortcutUp(both, at: 12.0) == .stopRecording)
         #expect(machine.state == .idle)
     }
 
     @Test func quickTapIsDiscarded() {
         var machine = HotkeyStateMachine()
-        #expect(machine.shortcutDown(both, at: 10.0) == .startRecording)
+        #expect(machine.shortcutDown(both, at: 10.0) == .startRecording(.focusedApp))
         #expect(machine.shortcutUp(both, at: 10.1) == .cancelRecording)
         #expect(machine.state == .idle)
     }
@@ -23,7 +23,7 @@ struct HotkeyStateMachineTests {
         var machine = HotkeyStateMachine()
         _ = machine.shortcutDown(both, at: 10.0)
         #expect(machine.shortcutUp(both, at: 10.1) == .cancelRecording)
-        #expect(machine.shortcutDown(both, at: 10.3) == .startRecording)
+        #expect(machine.shortcutDown(both, at: 10.3) == .startRecording(.focusedApp))
         #expect(machine.shortcutUp(both, at: 10.4) == nil)
         #expect(machine.state == .handsFree)
 
@@ -64,7 +64,7 @@ struct HotkeyStateMachineTests {
 
     @Test func keyUsedInAShortcutCancelsAndIgnoresRelease() {
         var machine = HotkeyStateMachine()
-        #expect(machine.shortcutDown(both, at: 10.0) == .startRecording)
+        #expect(machine.shortcutDown(both, at: 10.0) == .startRecording(.focusedApp))
         #expect(machine.otherKeyDown(51, at: 10.5) == .cancelRecording)
         #expect(machine.shortcutUp(both, at: 11.0) == nil)
         #expect(machine.state == .idle)
@@ -74,7 +74,7 @@ struct HotkeyStateMachineTests {
         var machine = HotkeyStateMachine()
         _ = machine.shortcutDown(.hold, at: 10.0)
         _ = machine.shortcutUp(.hold, at: 10.1)
-        #expect(machine.shortcutDown(.hold, at: 10.3) == .startRecording)
+        #expect(machine.shortcutDown(.hold, at: 10.3) == .startRecording(.focusedApp))
         #expect(machine.shortcutUp(.hold, at: 10.4) == .cancelRecording)
         #expect(machine.state == .idle)
     }
@@ -83,7 +83,7 @@ struct HotkeyStateMachineTests {
         var machine = HotkeyStateMachine()
         #expect(machine.shortcutDown(.handsFree, at: 10.0) == nil)
         #expect(machine.shortcutUp(.handsFree, at: 10.1) == nil)
-        #expect(machine.shortcutDown(.handsFree, at: 10.3) == .startRecording)
+        #expect(machine.shortcutDown(.handsFree, at: 10.3) == .startRecording(.focusedApp))
         #expect(machine.state == .handsFree)
         #expect(machine.shortcutUp(.handsFree, at: 10.4) == nil)
         // Pressing the hold key finishes it too.
@@ -102,7 +102,7 @@ struct HotkeyStateMachineTests {
 
     @Test func releasingTheOtherKeyDoesNotEndAHold() {
         var machine = HotkeyStateMachine()
-        #expect(machine.shortcutDown(.hold, at: 10.0) == .startRecording)
+        #expect(machine.shortcutDown(.hold, at: 10.0) == .startRecording(.focusedApp))
         #expect(machine.shortcutDown(.handsFree, at: 10.5) == nil)
         #expect(machine.shortcutUp(.handsFree, at: 10.6) == nil)
         #expect(machine.state == .holding(since: 10.0, roles: .hold))
@@ -129,6 +129,43 @@ struct HotkeyStateMachineTests {
         var machine = HotkeyStateMachine()
         _ = machine.shortcutDown(both, at: 10.0)
         #expect(machine.shortcutDown(both, at: 10.5) == nil)
+    }
+
+    // MARK: - Orchestrate key
+
+    @Test func orchestrateHoldStartsOrchestratorRecording() {
+        var m = HotkeyStateMachine()
+        #expect(m.shortcutDown(.orchestrate, at: 0) == .startRecording(.orchestrator))
+        #expect(m.shortcutUp(.orchestrate, at: 1) == .stopRecording)
+    }
+
+    @Test func orchestrateQuickTapCancels() {
+        var m = HotkeyStateMachine()
+        _ = m.shortcutDown(.orchestrate, at: 0)
+        #expect(m.shortcutUp(.orchestrate, at: 0.1) == .cancelRecording)
+    }
+
+    @Test func orchestrateComboCancels() {
+        var m = HotkeyStateMachine()
+        _ = m.shortcutDown(.orchestrate, at: 0)
+        #expect(m.otherKeyDown(5, at: 0.1) == .cancelRecording)
+    }
+
+    @Test func holdKeyStillTargetsFocusedApp() {
+        var m = HotkeyStateMachine()
+        #expect(m.shortcutDown(.hold, at: 0) == .startRecording(.focusedApp))
+    }
+
+    @Test func orchestrateIgnoredWhileHolding() {
+        var m = HotkeyStateMachine()
+        _ = m.shortcutDown(.hold, at: 0)
+        #expect(m.shortcutDown(.orchestrate, at: 0.1) == nil)
+    }
+
+    @Test func orchestrateReleaseDoesNotEndAnotherKeysHold() {
+        var m = HotkeyStateMachine()
+        _ = m.shortcutDown(.hold, at: 0)
+        #expect(m.shortcutUp(.orchestrate, at: 1) == nil)
     }
 }
 

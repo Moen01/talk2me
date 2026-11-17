@@ -6,9 +6,18 @@ import Foundation
 /// - Double-tap the hands-free key: keep recording without holding. Press Enter or the
 ///   key again to finish, or Escape to discard.
 /// - A quick single tap of the hold key, or using it with another key (Fn+Delete), discards the recording.
+/// - Hold the orchestrate key: record for the orchestrator instead of the focused app.
 public struct HotkeyStateMachine: Sendable {
+    /// Which app or feature will receive the finished recording.
+    public enum RecordingTarget: Equatable, Sendable {
+        /// Paste the transcript into whichever app is focused.
+        case focusedApp
+        /// Route the transcript to the orchestrator (Task 9).
+        case orchestrator
+    }
+
     public enum Action: Equatable, Sendable {
-        case startRecording
+        case startRecording(RecordingTarget)
         case stopRecording
         case cancelRecording
     }
@@ -39,16 +48,21 @@ public struct HotkeyStateMachine: Sendable {
     public mutating func shortcutDown(_ roles: ShortcutRoles, at time: TimeInterval) -> Action? {
         switch state {
         case .idle:
+            if roles.contains(.orchestrate) {
+                // Orchestrate-only key: hold-to-record exactly like the hold key, but targets the orchestrator.
+                state = .holding(since: time, roles: roles)
+                return .startRecording(.orchestrator)
+            }
             if roles.contains(.hold) {
                 state = .holding(since: time, roles: roles)
-                return .startRecording
+                return .startRecording(.focusedApp)
             }
             guard roles.contains(.handsFree) else { return nil }
             if let last = lastTapAt, time - last <= doubleTapWindow {
                 // Second tap of a hands-free-only key: start right away.
                 lastTapAt = nil
                 state = .handsFree
-                return .startRecording
+                return .startRecording(.focusedApp)
             }
             state = .tapping(since: time)
             return nil

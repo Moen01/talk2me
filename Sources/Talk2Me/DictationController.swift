@@ -109,7 +109,10 @@ final class DictationController: ObservableObject {
     private func perform(_ action: HotkeyStateMachine.Action?) {
         DispatchQueue.main.async { [self] in
             switch action {
-            case .startRecording: startRecording()
+            case .startRecording(let target):
+                // Target routing is handled in Task 9; stash it until then.
+                pendingTarget = target
+                startRecording()
             case .stopRecording: stopRecording()
             case .cancelRecording: cancelRecording()
             case nil: break
@@ -117,6 +120,9 @@ final class DictationController: ObservableObject {
             isHandsFree = machine.state == .handsFree
         }
     }
+
+    /// The target the current recording is for. Consumed by the orchestrator in Task 9.
+    private var pendingTarget: HotkeyStateMachine.RecordingTarget = .focusedApp
 
     // MARK: - Recording
 
