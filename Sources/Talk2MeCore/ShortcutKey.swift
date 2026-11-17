@@ -97,11 +97,13 @@ public enum ShortcutBindings {
         // Add hold key
         bindings[hold] = .hold
 
-        // Add hands-free key if different from hold
-        if let handsFree, handsFree != hold {
-            bindings[handsFree] = .handsFree
-        } else if let handsFree, handsFree == hold {
-            bindings[hold] = [.hold, .handsFree]
+        // Add hands-free key
+        if let handsFree {
+            if handsFree == hold {
+                bindings[hold, default: []].insert(.handsFree)
+            } else {
+                bindings[handsFree, default: []].insert(.handsFree)
+            }
         }
 
         // Add orchestrate key if different from both hold and hands-free
