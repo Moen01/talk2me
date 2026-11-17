@@ -77,6 +77,25 @@ Upper/lower case and punctuation do not matter, but the phrase must be the whole
 "can you open jira" pastes the sentence as normal. A shortcut can do almost anything, including
 running a shell script, so use **Run shortcut** for tasks.
 
+### Orchestrate
+
+Orchestrate is a second push-to-talk key that sends your speech to a dedicated Claude Code
+session in Terminal instead of the focused app. While you hold the Orchestrate key, say
+"open the payments folder and start a session there" and Talk2Me routes it to that session.
+The orchestrator navigates folders, opens or focuses project sessions by voice, and answers
+questions about your code — it never edits files directly.
+
+**Default key:** Left Option. Enable in **Settings > Orchestrate**, then choose a root folder
+(where the orchestrator session starts; defaults to your home folder).
+
+The first time Talk2Me opens a Terminal window it needs **Automation permission**:
+macOS will show a prompt — click **OK**. If you missed it, go to **System Settings >
+Privacy & Security > Automation** and enable Terminal for Talk2Me.
+The Permissions page in Settings shows the current state when Orchestrate is enabled.
+
+Orchestrate only works with Terminal.app. The session runs `claude` in that window; Talk2Me
+sends your spoken text to it via AppleScript.
+
 ## Connecting to Claude
 
 Pick a backend in Settings:

@@ -7,25 +7,40 @@ final class StatusBarController: NSObject {
         var openSettings: () -> Void
         var openSetupGuide: () -> Void
         var openAbout: () -> Void
+        var startOrchestrator: () -> Void
     }
 
     private let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
     private let controller: DictationController
+    private let orchestrator: OrchestratorController
+    private let settings: AppSettings
     private let actions: Actions
     private let stateLine = NSMenuItem(title: "", action: nil, keyEquivalent: "")
     private let resultLine = NSMenuItem(title: "", action: nil, keyEquivalent: "")
     private let accessibilityItem = NSMenuItem(title: "Grant Accessibility Access…", action: #selector(openAccessibility), keyEquivalent: "")
+    // Orchestrator items — hidden when orchestrate is disabled.
+    private let orchestratorSeparator = NSMenuItem.separator()
+    private let orchestratorLine = NSMenuItem(title: "", action: nil, keyEquivalent: "")
+    private let startOrchestratorItem: NSMenuItem
 
-    init(controller: DictationController, actions: Actions) {
+    init(controller: DictationController, orchestrator: OrchestratorController, settings: AppSettings, actions: Actions) {
         self.controller = controller
+        self.orchestrator = orchestrator
+        self.settings = settings
         self.actions = actions
+        startOrchestratorItem = NSMenuItem(title: "Start Orchestrator", action: nil, keyEquivalent: "")
         super.init()
 
         let menu = NSMenu()
+        menu.autoenablesItems = false
         stateLine.isEnabled = false
         resultLine.isEnabled = false
+        orchestratorLine.isEnabled = false
         menu.addItem(stateLine)
         menu.addItem(resultLine)
+        menu.addItem(orchestratorSeparator)
+        menu.addItem(orchestratorLine)
+        menu.addItem(startOrchestratorItem)
         menu.addItem(.separator())
         menu.addItem(accessibilityItem)
         menu.addItem(menuItem(title: "Settings…", action: #selector(showSettings), key: ","))
@@ -34,6 +49,8 @@ final class StatusBarController: NSObject {
         menu.addItem(menuItem(title: "About Talk2Me", action: #selector(showAbout), key: ""))
         menu.addItem(NSMenuItem(title: "Quit Talk2Me", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q"))
         accessibilityItem.target = self
+        startOrchestratorItem.target = self
+        startOrchestratorItem.action = #selector(startOrchestrator)
         self.item.menu = menu
         refresh()
     }
@@ -57,10 +74,32 @@ final class StatusBarController: NSObject {
         stateLine.title = state
         resultLine.title = "Last: \(controller.lastResult)"
         accessibilityItem.isHidden = Permissions.accessibilityGranted
+
+        let orchestrateEnabled = settings.orchestrateEnabled
+        orchestratorSeparator.isHidden = !orchestrateEnabled
+        orchestratorLine.isHidden = !orchestrateEnabled
+        startOrchestratorItem.isHidden = !orchestrateEnabled
+
+        if orchestrateEnabled {
+            // lastStatus carries the real outcome: "Running.", a failure line, or the
+            // Automation-denied line — the menu shows exactly why a start did not take.
+            orchestratorLine.title = "Orchestrator: \(orchestrator.lastStatus)"
+            switch orchestrator.state {
+            case .notRunning:
+                startOrchestratorItem.isEnabled = true
+            case .running:
+                // Disable while running so the user can't start a second instance.
+                startOrchestratorItem.isEnabled = false
+            }
+        }
     }
 
     @objc private func openAccessibility() {
         Permissions.requestAccessibility()
+    }
+
+    @objc private func startOrchestrator() {
+        actions.startOrchestrator()
     }
 
     @objc private func showSettings() { actions.openSettings() }

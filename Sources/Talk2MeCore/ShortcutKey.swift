@@ -85,13 +85,34 @@ public struct ShortcutRoles: OptionSet, Hashable, Sendable {
     public static let hold = ShortcutRoles(rawValue: 1)
     /// Double-tap to start hands-free mode.
     public static let handsFree = ShortcutRoles(rawValue: 2)
+    /// Open the Orchestrate sidebar.
+    public static let orchestrate = ShortcutRoles(rawValue: 4)
 }
 
 /// Which keys to watch, and what each one does.
 public enum ShortcutBindings {
-    public static func make(hold: ShortcutKey, handsFree: ShortcutKey?) -> [ShortcutKey: ShortcutRoles] {
-        guard let handsFree else { return [hold: .hold] }
-        if handsFree == hold { return [hold: [.hold, .handsFree]] }
-        return [hold: .hold, handsFree: .handsFree]
+    public static func make(hold: ShortcutKey, handsFree: ShortcutKey?, orchestrate: ShortcutKey? = nil) -> [ShortcutKey: ShortcutRoles] {
+        var bindings: [ShortcutKey: ShortcutRoles] = [:]
+
+        // Add hold key
+        bindings[hold] = .hold
+
+        // Add hands-free key
+        if let handsFree {
+            if handsFree == hold {
+                bindings[hold, default: []].insert(.handsFree)
+            } else {
+                bindings[handsFree, default: []].insert(.handsFree)
+            }
+        }
+
+        // Add orchestrate key if different from both hold and hands-free
+        if let orchestrate {
+            if orchestrate != hold && orchestrate != handsFree {
+                bindings[orchestrate] = .orchestrate
+            }
+        }
+
+        return bindings
     }
 }

@@ -28,6 +28,8 @@
 	<true/>
 	<key>NSHighResolutionCapable</key>
 	<true/>
+	<key>NSAppleEventsUsageDescription</key>
+	<string>Talk2Me opens and controls Terminal windows for the Orchestrate voice channel.</string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>Talk2Me records your voice while you hold Fn, transcribes it on this Mac and does not save the audio.</string>
 	<key>NSSpeechRecognitionUsageDescription</key>

@@ -4,6 +4,33 @@ import ApplicationServices
 
 /// The two permissions the app needs, and shortcuts to the right System Settings panes.
 enum Permissions {
+    enum AutomationStatus {
+        case granted, denied, notDetermined
+    }
+
+    /// Checks whether Talk2Me can automate Terminal without prompting the user.
+    /// Uses `AEDeterminePermissionToAutomateTarget` with `askUserIfNeeded: false`.
+    static func automationStatus(bundleID: String) -> AutomationStatus {
+        let targetDesc = NSAppleEventDescriptor(bundleIdentifier: bundleID)
+        let status = AEDeterminePermissionToAutomateTarget(
+            targetDesc.aeDesc,
+            typeWildCard, typeWildCard,
+            false
+        )
+        switch status {
+        case noErr:
+            return .granted
+        case OSStatus(errAEEventNotPermitted):
+            return .denied
+        default:
+            // procNotFound (-600) = not running / never asked; treat as notDetermined
+            return .notDetermined
+        }
+    }
+
+    static func openAutomationSettings() {
+        open("x-apple.systempreferences:com.apple.preference.security?Privacy_Automation")
+    }
     static var accessibilityGranted: Bool { AXIsProcessTrusted() }
 
     /// Permissions change in System Settings, outside the app, so views that show them poll on

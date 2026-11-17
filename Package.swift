@@ -7,6 +7,7 @@ let package = Package(
     products: [
         .executable(name: "Talk2Me", targets: ["Talk2Me"]),
         .executable(name: "talk2me-bench", targets: ["Talk2MeBench"]),
+        .executable(name: "talk2me-mcp", targets: ["Talk2MeMCP"]),
     ],
     targets: [
         // Platform logic with no UI: hotkey state, transcription, Claude cleanup.
@@ -19,6 +20,8 @@ let package = Package(
         ),
         // Command-line harness to time the cleanup backends and transcribe audio files.
         .executableTarget(name: "Talk2MeBench", dependencies: ["Talk2MeCore"]),
+        // stdio MCP server: bridges the orchestrator claude session to Talk2Me's tools.
+        .executableTarget(name: "Talk2MeMCP", dependencies: ["Talk2MeCore"]),
         .testTarget(name: "Talk2MeCoreTests", dependencies: ["Talk2MeCore"]),
     ]
 )

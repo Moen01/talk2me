@@ -23,17 +23,24 @@ if [[ -z "${SIGN_IDENTITY:-}" && -f "$SIGNING/signing.keychain-db" ]]; then
 fi
 
 swift build -c "$CONFIG" --product Talk2Me
+swift build -c "$CONFIG" --product talk2me-mcp
 BIN="$(swift build -c "$CONFIG" --show-bin-path)/Talk2Me"
+MCP_BIN="$(swift build -c "$CONFIG" --show-bin-path)/talk2me-mcp"
 
 rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp "$BIN" "$APP/Contents/MacOS/Talk2Me"
+cp "$MCP_BIN" "$APP/Contents/MacOS/talk2me-mcp"
 cp Resources/Info.plist "$APP/Contents/Info.plist"
 # Release builds stamp their version here; the update check compares against it.
 if [[ -n "${VERSION:-}" ]]; then
   plutil -replace CFBundleShortVersionString -string "$VERSION" "$APP/Contents/Info.plist"
 fi
 cp Resources/AppIcon.icns "$APP/Contents/Resources/AppIcon.icns"
+
+codesign --force --options runtime \
+  --sign "${SIGN_IDENTITY:--}" "${SIGN_ARGS[@]}" \
+  "$APP/Contents/MacOS/talk2me-mcp"
 
 codesign --force --options runtime \
   --entitlements Resources/Talk2Me.entitlements \
