@@ -32,6 +32,7 @@ final class StatusBarController: NSObject {
         super.init()
 
         let menu = NSMenu()
+        menu.autoenablesItems = false
         stateLine.isEnabled = false
         resultLine.isEnabled = false
         orchestratorLine.isEnabled = false
