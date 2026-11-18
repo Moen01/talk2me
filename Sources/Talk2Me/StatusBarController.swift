@@ -62,13 +62,24 @@ final class StatusBarController: NSObject {
     }
 
     func refresh() {
-        let (symbol, state): (String, String) = switch controller.phase {
+        var (symbol, state): (String, String) = switch controller.phase {
         case .idle: ("waveform", controller.readiness)
         case .recording where controller.isHandsFree: ("mic.fill", "Hands-free: press Enter to finish, Esc to discard")
-        case .recording: ("mic.fill", "Listening… release \(controller.holdKeyName) to finish")
+        case .recording:
+            if let label = controller.recordingTargetLabel {
+                ("mic.fill", "Recording → \(label)")
+            } else {
+                ("mic.fill", "Listening… release \(controller.holdKeyName) to finish")
+            }
         case .transcribing: ("ellipsis.circle", "Transcribing on this Mac…")
         case .cleaning: ("sparkles", "Cleaning up with Claude…")
         case .inserting: ("text.cursor", "Pasting…")
+        }
+        // Replace the icon with the slot number (1.circle … 4.circle) while the key is held
+        // and recording into the slot. recordingSlotIndex is cleared at stop, so this only
+        // fires during .recording — the .transcribing/.cleaning phases never reach here.
+        if let index = controller.recordingSlotIndex, controller.phase == .recording {
+            symbol = "\(index + 1).circle"
         }
         item.button?.image = NSImage(systemSymbolName: symbol, accessibilityDescription: "Talk2Me: \(state)")
         stateLine.title = state

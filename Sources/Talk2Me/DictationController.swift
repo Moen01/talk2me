@@ -22,10 +22,20 @@ final class DictationController: ObservableObject {
     var onLevel: ((Float) -> Void)?
     /// Routes orchestrator dictations. Set by AppDelegate after creating OrchestratorController.
     var sendToOrchestrator: ((String) async -> String)?
+    /// "Prompt N" while actively recording into a slot; nil otherwise.
+    private(set) var recordingTargetLabel: String? { didSet { changed() } }
+    /// Zero-based slot index while recording into a slot; nil otherwise. Always in sync with recordingTargetLabel.
+    private(set) var recordingSlotIndex: Int?
 
     private func changed() {
         objectWillChange.send()
         onChange?()
+    }
+
+    /// Sets both slot-capture properties together so they can never drift.
+    private func setSlotCapture(slotIndex: Int?) {
+        recordingSlotIndex = slotIndex
+        recordingTargetLabel = slotIndex.map { "Prompt \($0 + 1)" }
     }
 
     var holdKeyName: String { KeyboardLayout.name(of: settings.holdKey) }
@@ -43,6 +53,8 @@ final class DictationController: ObservableObject {
     private var prepared: (localeID: String, locale: Locale, format: AVAudioFormat)? { didSet { changed() } }
     private var current: (session: DictationSession, started: Task<Error?, Never>)?
     private var cachedAPIKey: String?
+    /// One-shot timer that fires when a slot double-tap window expires.
+    private var slotTapTimer: DispatchWorkItem?
 
     /// Audio after the hold key is released, so the last word is not clipped.
     private let releaseTail: Duration = .milliseconds(150)
@@ -56,7 +68,7 @@ final class DictationController: ObservableObject {
     /// Key presses matter only while a shortcut key is down or hands-free mode is on.
     var wantsKeyEvents: Bool {
         switch machine.state {
-        case .holding, .tapping, .handsFree: true
+        case .holding, .tapping, .handsFree, .slotTapping: true
         case .idle, .awaitingRelease: false
         }
     }
@@ -112,15 +124,38 @@ final class DictationController: ObservableObject {
         DispatchQueue.main.async { [self] in
             switch action {
             case .startRecording(let target):
-                // Target routing is handled in Task 9; stash it until then.
                 pendingTarget = target
                 startRecording()
             case .stopRecording: stopRecording()
             case .cancelRecording: cancelRecording()
+            case .paste(let target):
+                if case .promptSlot(let n) = target {
+                    Task { await pasteSlot(n) }
+                }
             case nil: break
             }
             isHandsFree = machine.state == .handsFree
+            scheduleSlotTapTimerIfNeeded()
         }
+    }
+
+    /// If the state machine is in `slotTapping`, (re)schedule a one-shot timer for the
+    /// double-tap window. Any previous pending timer is cancelled first.
+    private func scheduleSlotTapTimerIfNeeded() {
+        // Cancel whatever was pending.
+        slotTapTimer?.cancel()
+        slotTapTimer = nil
+
+        guard case .slotTapping = machine.state else { return }
+
+        let work = DispatchWorkItem { [weak self] in
+            guard let self else { return }
+            let now = ProcessInfo.processInfo.systemUptime
+            let result = self.machine.slotTapExpired(at: now)
+            self.perform(result)
+        }
+        slotTapTimer = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + machine.doubleTapWindow, execute: work)
     }
 
     /// The target the current recording is for. Consumed by the orchestrator in Task 9.
@@ -134,11 +169,13 @@ final class DictationController: ObservableObject {
             machine.reset()
             // Refused start must not leave an orchestrator target armed.
             pendingTarget = .focusedApp
+            setSlotCapture(slotIndex: nil)
             return
         }
         guard let prepared, prepared.localeID == settings.localeID else {
             lastResult = "Not ready yet: \(readiness)"
             machine.reset()
+            setSlotCapture(slotIndex: nil)
             Task { await prepareDictation() }
             return
         }
@@ -159,6 +196,12 @@ final class DictationController: ObservableObject {
             do { try await session.start(); return nil } catch { return error }
         }
         current = (session, started)
+        // Show "Prompt N" in the menu bar while recording into a slot.
+        if case .promptSlot(let n) = pendingTarget {
+            setSlotCapture(slotIndex: n)
+        } else {
+            setSlotCapture(slotIndex: nil)
+        }
         phase = .recording
     }
 
@@ -174,6 +217,7 @@ final class DictationController: ObservableObject {
         current = nil
         // A cancelled recording must not leave an orchestrator target visible to the next recording.
         pendingTarget = .focusedApp
+        setSlotCapture(slotIndex: nil)
         if phase == .recording { phase = .idle }
     }
 
@@ -187,6 +231,7 @@ final class DictationController: ObservableObject {
         // Consume the target now so it cannot be overwritten by a concurrent startRecording.
         let target = pendingTarget
         pendingTarget = .focusedApp
+        setSlotCapture(slotIndex: nil)
         phase = .transcribing
         Task { await finish(current.session, started: current.started, target: target) }
     }
@@ -237,6 +282,31 @@ final class DictationController: ObservableObject {
             let transcript = PersonalDictionary.apply(settings.dictionary, to: raw)
             phase = .inserting
             lastResult = await sendToOrchestrator?(transcript) ?? "Orchestrate is not wired up."
+            phase = .idle
+            return
+        }
+
+        // Prompt-slot capture: run full cleanup, then store instead of pasting. Skip snippets.
+        if case .promptSlot(let n) = target {
+            phase = .cleaning
+            let transcript = PersonalDictionary.apply(settings.dictionary, to: raw)
+            let outcome = await CleanupRouter.run(
+                transcript: transcript,
+                backend: makeBackend(),
+                model: settings.model,
+                instructions: settings.cleanupInstructions,
+                timeout: .seconds(settings.timeoutSeconds)
+            )
+            let slot = PromptSlot(text: outcome.text, savedAt: Date())
+            settings.promptSlots[n] = slot
+            let wordCount = slot.wordCount
+            if outcome.cleaned {
+                lastResult = "Saved to Prompt \(n + 1) (\(wordCount) words)."
+            } else if let failure = outcome.failure {
+                lastResult = "Saved to Prompt \(n + 1) (\(wordCount) words), raw transcript (\(failure))."
+            } else {
+                lastResult = "Saved to Prompt \(n + 1) (\(wordCount) words), raw transcript."
+            }
             phase = .idle
             return
         }
@@ -306,6 +376,24 @@ final class DictationController: ObservableObject {
             return "Snippet \(name): could not run Shortcuts: \(error.localizedDescription)"
         }
         return "Snippet \(name): running shortcut \"\(shortcut)\"…"
+    }
+
+    // MARK: - Prompt bank
+
+    /// Paste the saved text of slot n into the focused app. Never touches the microphone.
+    private func pasteSlot(_ n: Int) async {
+        let slot = settings.promptSlots[n]
+        guard !slot.isEmpty else {
+            lastResult = "Prompt \(n + 1) is empty."
+            return
+        }
+        let result = await inserter.insert(slot.text)
+        switch result {
+        case .pasted:
+            lastResult = "Pasted Prompt \(n + 1)."
+        case .copiedOnly(let reason):
+            lastResult = "Prompt \(n + 1): \(reason)"
+        }
     }
 
     // MARK: - Cleanup
