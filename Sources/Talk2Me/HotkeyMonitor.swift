@@ -201,8 +201,10 @@ final class HotkeyMonitor {
             if code == ShortcutKey.escapeKeyCode {
                 finishCapture(nil)
             } else if ShortcutKey.isAllowed(keyCode: code) {
-                // With chord modifiers held, the base key completes a chord; otherwise a single key.
-                let mask = captureMask & ShortcutKey.chordModifierMask
+                // Read live flags from this keyDown event: captureMask only tracks modifiers that
+                // arrived as flagsChanged events, so it misses modifiers already held when capture
+                // started, and sticks with ones released before the base key.
+                let mask = event.flags.rawValue & ShortcutKey.chordModifierMask
                 finishCapture(ShortcutKey(keyCode: code, modifiers: mask))
             }
             return nil
