@@ -3,7 +3,7 @@ import SwiftUI
 import Talk2MeCore
 
 enum SettingsPage: String, CaseIterable, Identifiable {
-    case general, hotkey, cleanup, dictionary, snippets, orchestrate, permissions, language
+    case general, hotkey, cleanup, dictionary, snippets, orchestrate, promptBank, permissions, language
 
     var id: Self { self }
 
@@ -15,6 +15,7 @@ enum SettingsPage: String, CaseIterable, Identifiable {
         case .dictionary: "Dictionary"
         case .snippets: "Snippets"
         case .orchestrate: "Orchestrate"
+        case .promptBank: "Prompt Bank"
         case .permissions: "Permissions"
         case .language: "Language"
         }
@@ -28,6 +29,7 @@ enum SettingsPage: String, CaseIterable, Identifiable {
         case .dictionary: "character.book.closed"
         case .snippets: "bolt"
         case .orchestrate: "arrow.triangle.branch"
+        case .promptBank: "tray.full"
         case .permissions: "lock.shield"
         case .language: "globe"
         }
@@ -93,6 +95,7 @@ struct SettingsView: View {
         case .dictionary: DictionaryEditor(entries: $settings.dictionary)
         case .snippets: SnippetsEditor(snippets: $settings.snippets)
         case .orchestrate: orchestrate
+        case .promptBank: promptBank
         case .permissions: permissions
         case .language: language
         }
@@ -236,6 +239,66 @@ struct SettingsView: View {
                 Text("Opens sessions in Terminal.app. Speech on this key goes to the orchestrator, not the focused app.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
+            }
+        }
+    }
+
+    // MARK: - Prompt Bank page
+
+    @ViewBuilder
+    private var promptBank: some View {
+        Section {
+            Toggle("Enable Prompt Bank", isOn: $settings.promptBankEnabled)
+        }
+
+        if settings.promptBankEnabled {
+            ForEach(0..<4) { i in
+                promptSlotSection(index: i)
+            }
+
+            Section {
+                Text("Hold a key and talk to save into the slot. Tap the key to paste it. Recording again replaces the slot.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func promptSlotSection(index i: Int) -> some View {
+        Section("Prompt \(i + 1)") {
+            PromptKeyPicker(
+                promptKey: $settings.promptKeys[i],
+                label: "Prompt \(i + 1) key",
+                holdKey: settings.holdKey,
+                handsFreeKey: settings.handsFreeEnabled ? settings.handsFreeKey : nil,
+                orchestrateKey: settings.orchestrateEnabled ? settings.orchestrateKey : nil,
+                otherPromptKeys: (0..<4).filter { $0 != i }.compactMap { settings.promptKeys[$0] },
+                recordKey: recordKey,
+                cancelRecording: cancelRecording
+            )
+
+            if !settings.promptSlots[i].isEmpty {
+                HStack {
+                    VStack(alignment: .leading, spacing: 2) {
+                        // Show first ~60 chars of the saved text as a preview.
+                        let preview = settings.promptSlots[i].text.prefix(60)
+                        Text(preview + (settings.promptSlots[i].text.count > 60 ? "…" : ""))
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                        if let savedAt = settings.promptSlots[i].savedAt {
+                            Text(RelativeDateTimeFormatter().localizedString(for: savedAt, relativeTo: Date()))
+                                .font(.caption2)
+                                .foregroundStyle(.tertiary)
+                        }
+                    }
+                    Spacer()
+                    Button("Clear") {
+                        settings.promptSlots[i] = PromptSlot()
+                    }
+                    .controlSize(.small)
+                }
             }
         }
     }
@@ -558,6 +621,122 @@ struct OrchestrateKeyPicker: View {
             } else if let name = liveConflict {
                 // Another key changed to now match the committed orchestrateKey.
                 Text("\(KeyboardLayout.name(of: orchestrateKey)) now conflicts with \(name). Choose a different key.")
+                    .font(.caption)
+                    .foregroundStyle(.orange)
+            }
+        }
+        .onReceive(Permissions.ticks) { _ in
+            let now = Permissions.accessibilityGranted
+            if now != trusted { trusted = now }
+        }
+    }
+}
+
+/// A key picker for a Prompt Bank slot. Refuses keys that conflict with hold, hands-free,
+/// orchestrate, or the other three prompt slot keys.
+struct PromptKeyPicker: View {
+    @Binding var promptKey: ShortcutKey?
+    let label: String
+    let holdKey: ShortcutKey
+    let handsFreeKey: ShortcutKey?
+    let orchestrateKey: ShortcutKey?
+    /// The other three prompt slot keys (already filtered to exclude this slot).
+    let otherPromptKeys: [ShortcutKey]
+    let recordKey: (@escaping (ShortcutKey?) -> Void) -> Void
+    let cancelRecording: () -> Void
+
+    @State private var recording = false
+    @State private var pendingKey: ShortcutKey? = nil
+    @State private var trusted = Permissions.accessibilityGranted
+
+    // Sentinel used for the "unbound" menu item. KeyCode -1 is never a real key.
+    private static let unbound = ShortcutKey(keyCode: -1)
+
+    private var options: [ShortcutKey] {
+        // Build the preset list, ensuring the currently bound key is always present.
+        var list = ShortcutKey.presets
+        if let key = promptKey, !list.contains(key) { list.append(key) }
+        return list
+    }
+
+    private func conflictName(for key: ShortcutKey) -> String? {
+        if key == holdKey { return "the hold key" }
+        if let hf = handsFreeKey, key == hf { return "the hands-free key" }
+        if let orch = orchestrateKey, key == orch { return "the orchestrate key" }
+        if let other = otherPromptKeys.first(where: { $0 == key }) {
+            return "another prompt key (\(KeyboardLayout.name(of: other)))"
+        }
+        return nil
+    }
+
+    private var liveConflict: String? {
+        promptKey.flatMap { conflictName(for: $0) }
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack {
+                // "Unbound" is shown as the first menu item when promptKey is nil.
+                Picker(label, selection: Binding(
+                    get: { promptKey ?? Self.unbound },
+                    set: { candidate in
+                        // The special sentinel means "unbound" — allow it always.
+                        if candidate == Self.unbound {
+                            promptKey = nil
+                            pendingKey = nil
+                            return
+                        }
+                        if conflictName(for: candidate) == nil {
+                            promptKey = candidate
+                            pendingKey = nil
+                        } else {
+                            pendingKey = candidate
+                        }
+                    }
+                )) {
+                    Text("— unbound —").tag(Self.unbound)
+                    ForEach(options, id: \.self) { option in
+                        Text(KeyboardLayout.name(of: option)).tag(option)
+                    }
+                }
+                Button(recording ? "Cancel" : "Record a key…") {
+                    if recording {
+                        cancelRecording()
+                        return
+                    }
+                    pendingKey = nil
+                    recording = true
+                    recordKey { captured in
+                        recording = false
+                        guard let captured else { return }
+                        if conflictName(for: captured) == nil {
+                            promptKey = captured
+                        } else {
+                            pendingKey = captured
+                        }
+                    }
+                }
+                .disabled(!trusted && !recording)
+            }
+
+            if !trusted {
+                HStack {
+                    Text("Talk2Me can't see key presses without Accessibility access.")
+                        .font(.caption)
+                        .foregroundStyle(.orange)
+                    Button("Allow Accessibility…") { Permissions.requestAccessibility() }
+                        .controlSize(.small)
+                }
+            } else if recording {
+                Text("Press the key you want to use… (Esc cancels)")
+                    .font(.caption)
+                    .foregroundStyle(.orange)
+            } else if let pending = pendingKey, let name = conflictName(for: pending) {
+                Text("\(KeyboardLayout.name(of: pending)) is already used as \(name). Choose a different key.")
+                    .font(.caption)
+                    .foregroundStyle(.orange)
+            } else if let name = liveConflict, let key = promptKey {
+                Text("\(KeyboardLayout.name(of: key)) now conflicts with \(name). Choose a different key.")
                     .font(.caption)
                     .foregroundStyle(.orange)
             }

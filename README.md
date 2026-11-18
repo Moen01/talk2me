@@ -96,6 +96,26 @@ The Permissions page in Settings shows the current state when Orchestrate is ena
 Orchestrate only works with Terminal.app. The session runs `claude` in that window; Talk2Me
 sends your spoken text to it via AppleScript.
 
+### Prompt Bank
+
+Prompt Bank gives you up to four reusable text slots, each bound to its own key. Use them
+to record a prompt once and paste it into any app with a single tap — without retyping or
+clipboard hunting.
+
+**Off by default.** Enable in **Settings > Prompt Bank**, then assign a key to each slot
+you want to use.
+
+| Gesture | What happens |
+| --- | --- |
+| Hold the slot key and speak | Records your speech, cleans it up, and saves it into the slot |
+| Tap the slot key (quick press and release) | Pastes the saved text into the focused app |
+| Double-tap the slot key | Starts hands-free recording into the slot for longer dictation |
+| Record again | Replaces whatever is in the slot |
+
+Slots survive restarts — the text is saved to disk as soon as recording finishes. Each slot
+shows a one-line preview and its age in Settings so you always know what is stored. The
+Clear button empties a slot without changing its key assignment.
+
 ## Connecting to Claude
 
 Pick a backend in Settings:
