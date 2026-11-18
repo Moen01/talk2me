@@ -15,7 +15,24 @@ final class TextInserter {
     /// Time for the target app to read the clipboard before it is restored.
     var restoreDelay: Duration = .milliseconds(500)
 
+    /// Tail of the in-flight chain; each new insert awaits the previous so two pastes
+    /// never overlap and the second never snapshots the first's transient clipboard.
+    private var inFlight: Task<Void, Never>?
+
     func insert(_ text: String) async -> Outcome {
+        // Wait for any in-progress insert to finish before touching the clipboard.
+        let previous = inFlight
+        let outcome: Outcome = await withCheckedContinuation { continuation in
+            inFlight = Task {
+                await previous?.value
+                let result = await self._insert(text)
+                continuation.resume(returning: result)
+            }
+        }
+        return outcome
+    }
+
+    private func _insert(_ text: String) async -> Outcome {
         let pasteboard = NSPasteboard.general
         if IsSecureEventInputEnabled() {
             copy(text, to: pasteboard)

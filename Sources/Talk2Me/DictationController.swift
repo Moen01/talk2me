@@ -392,7 +392,7 @@ final class DictationController: ObservableObject {
         case .pasted:
             lastResult = "Pasted Prompt \(n + 1)."
         case .copiedOnly(let reason):
-            lastResult = reason
+            lastResult = "Prompt \(n + 1): \(reason)"
         }
     }
 
