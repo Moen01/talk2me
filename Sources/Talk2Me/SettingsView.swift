@@ -55,6 +55,7 @@ struct SettingsView: View {
     @State private var page: SettingsPage? = .general
 
     private let sample = "um so I was thinking we should uh move the meeting to thursday new paragraph also can you send me the slides"
+    private static let relativeFormatter = RelativeDateTimeFormatter()
 
     var body: some View {
         NavigationSplitView {
@@ -288,7 +289,7 @@ struct SettingsView: View {
                             .foregroundStyle(.secondary)
                             .lineLimit(1)
                         if let savedAt = settings.promptSlots[i].savedAt {
-                            Text(RelativeDateTimeFormatter().localizedString(for: savedAt, relativeTo: Date()))
+                            Text(Self.relativeFormatter.localizedString(for: savedAt, relativeTo: Date()))
                                 .font(.caption2)
                                 .foregroundStyle(.tertiary)
                         }
@@ -709,6 +710,7 @@ struct PromptKeyPicker: View {
                     recordKey { captured in
                         recording = false
                         guard let captured else { return }
+                        guard captured != Self.unbound else { return }
                         if conflictName(for: captured) == nil {
                             promptKey = captured
                         } else {
