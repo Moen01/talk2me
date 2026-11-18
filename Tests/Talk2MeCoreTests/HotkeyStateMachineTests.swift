@@ -174,6 +174,89 @@ struct HotkeyStateMachineTests {
         #expect(m.shortcutUp([.orchestrate, .handsFree], at: 0.1) == .cancelRecording)   // quick tap must cancel
         #expect(m.shortcutDown([.orchestrate, .handsFree], at: 0.2) == .startRecording(.orchestrator))
     }
+
+    // MARK: - Prompt slot gestures
+
+    @Test func slotHoldRecordsIntoSlot() {
+        var m = HotkeyStateMachine()
+        #expect(m.shortcutDown(.promptSlot(1), at: 0) == .startRecording(.promptSlot(1)))
+        #expect(m.shortcutUp(.promptSlot(1), at: 1) == .stopRecording)
+    }
+
+    @Test func slotQuickTapThenExpiryPastes() {
+        var m = HotkeyStateMachine()
+        _ = m.shortcutDown(.promptSlot(0), at: 0)
+        #expect(m.shortcutUp(.promptSlot(0), at: 0.1) == .cancelRecording)
+        #expect(m.slotTapExpired(at: 0.6) == .paste(.promptSlot(0)))
+        #expect(m.state == .idle)
+    }
+
+    @Test func slotDoubleTapGoesHandsFree() {
+        var m = HotkeyStateMachine()
+        _ = m.shortcutDown(.promptSlot(2), at: 0)
+        _ = m.shortcutUp(.promptSlot(2), at: 0.1)
+        #expect(m.shortcutDown(.promptSlot(2), at: 0.3) == .startRecording(.promptSlot(2)))
+        #expect(m.shortcutUp(.promptSlot(2), at: 0.4) == nil)       // promoted, keeps recording
+        #expect(m.state == .handsFree)
+        #expect(m.otherKeyDown(36, at: 2) == .stopRecording)        // Enter finishes
+    }
+
+    @Test func expiredTapDoesNotPasteTwice() {
+        var m = HotkeyStateMachine()
+        _ = m.shortcutDown(.promptSlot(0), at: 0)
+        _ = m.shortcutUp(.promptSlot(0), at: 0.1)
+        _ = m.slotTapExpired(at: 0.6)
+        #expect(m.slotTapExpired(at: 0.7) == nil)
+    }
+
+    @Test func secondTapAfterExpiryStartsANewTapCycle() {
+        var m = HotkeyStateMachine()
+        _ = m.shortcutDown(.promptSlot(0), at: 0)
+        _ = m.shortcutUp(.promptSlot(0), at: 0.1)
+        _ = m.slotTapExpired(at: 0.6)                                // pasted
+        _ = m.shortcutDown(.promptSlot(0), at: 0.7)
+        #expect(m.shortcutUp(.promptSlot(0), at: 0.75) == .cancelRecording) // new first tap, not hands-free
+        if case .slotTapping = m.state {} else { Issue.record("expected slotTapping") }
+    }
+
+    @Test func differentKeyDuringSlotTapAbandonsPaste() {
+        var m = HotkeyStateMachine()
+        _ = m.shortcutDown(.promptSlot(0), at: 0)
+        _ = m.shortcutUp(.promptSlot(0), at: 0.1)
+        #expect(m.shortcutDown(.hold, at: 0.2) == .startRecording(.focusedApp))
+        #expect(m.slotTapExpired(at: 0.6) == nil)
+    }
+
+    @Test func otherKeyDuringSlotTapAbandonsPaste() {
+        var m = HotkeyStateMachine()
+        _ = m.shortcutDown(.promptSlot(0), at: 0)
+        _ = m.shortcutUp(.promptSlot(0), at: 0.1)
+        _ = m.otherKeyDown(5, at: 0.2)
+        #expect(m.slotTapExpired(at: 0.6) == nil)
+    }
+
+    @Test func slotComboCancelsLikeHoldKey() {
+        var m = HotkeyStateMachine()
+        _ = m.shortcutDown(.promptSlot(3), at: 0)
+        #expect(m.otherKeyDown(5, at: 0.1) == .cancelRecording)
+    }
+
+    @Test func escapeDuringSlotHandsFreeCancels() {
+        var m = HotkeyStateMachine()
+        _ = m.shortcutDown(.promptSlot(1), at: 0)
+        _ = m.shortcutUp(.promptSlot(1), at: 0.1)
+        _ = m.shortcutDown(.promptSlot(1), at: 0.3)
+        _ = m.shortcutUp(.promptSlot(1), at: 0.4)
+        #expect(m.otherKeyDown(ShortcutKey.escapeKeyCode, at: 1) == .cancelRecording)
+    }
+
+    @Test func resetClearsPendingSlotTap() {
+        var m = HotkeyStateMachine()
+        _ = m.shortcutDown(.promptSlot(0), at: 0)
+        _ = m.shortcutUp(.promptSlot(0), at: 0.1)
+        m.reset()
+        #expect(m.slotTapExpired(at: 0.6) == nil)
+    }
 }
 
 struct ShortcutKeyTests {

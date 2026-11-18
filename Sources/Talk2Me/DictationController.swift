@@ -57,7 +57,7 @@ final class DictationController: ObservableObject {
     var wantsKeyEvents: Bool {
         switch machine.state {
         case .holding, .tapping, .handsFree: true
-        case .idle, .awaitingRelease: false
+        case .idle, .awaitingRelease, .slotTapping: false
         }
     }
 
@@ -117,6 +117,9 @@ final class DictationController: ObservableObject {
                 startRecording()
             case .stopRecording: stopRecording()
             case .cancelRecording: cancelRecording()
+            case .paste:
+                // Slot-paste handled by a later task; ignore for now.
+                break
             case nil: break
             }
             isHandsFree = machine.state == .handsFree
