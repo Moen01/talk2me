@@ -381,6 +381,9 @@ final class DictationController: ObservableObject {
     /// Clears `armedSlotIndex` when the clipboard no longer holds the armed slot's text
     /// (the user copied something else). Called periodically by StatusBarController.
     func refreshArmedState() {
+        // TextInserter holds dictation text on the clipboard for ~500 ms (snapshot→paste→restore).
+        // The string compare would fail mid-cycle and wrongly disarm the slot, so skip the check.
+        guard phase != .inserting else { return }
         guard let n = armedSlotIndex else { return }
         // String compare is the source of truth; changeCount is bumped by TextInserter's
         // restore cycle while preserving the armed text, so we must not use it.
