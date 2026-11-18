@@ -103,19 +103,18 @@ public struct ShortcutRoles: OptionSet, Hashable, Sendable {
         case 1: return .promptSlot2
         case 2: return .promptSlot3
         case 3: return .promptSlot4
-        default: return ShortcutRoles(rawValue: 0)
+        default: return [] // index out of range → empty set, binds nothing
         }
     }
 
-    /// Return the prompt slot index (0–3) if this role is a prompt slot, nil otherwise.
+    /// The prompt slot index (0–3) if these roles include a prompt slot, nil otherwise.
+    /// Uses contains(_:) so it still works when a slot is combined with other roles.
     public var promptSlotIndex: Int? {
-        switch rawValue {
-        case 8: return 0
-        case 16: return 1
-        case 32: return 2
-        case 64: return 3
-        default: return nil
-        }
+        if contains(.promptSlot1) { return 0 }
+        if contains(.promptSlot2) { return 1 }
+        if contains(.promptSlot3) { return 2 }
+        if contains(.promptSlot4) { return 3 }
+        return nil
     }
 }
 

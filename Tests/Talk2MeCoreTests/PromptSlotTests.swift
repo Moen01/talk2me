@@ -13,6 +13,11 @@ struct PromptSlotTests {
         #expect(slot.wordCount == 0)
     }
 
+    @Test func consecutiveWhitespaceDoesNotInflateWordCount() {
+        let slot = PromptSlot(text: "a  b\n\nc")
+        #expect(slot.wordCount == 3)
+    }
+
     @Test func isEmptyOnlyForEmptyText() {
         let emptySlot = PromptSlot(text: "")
         #expect(emptySlot.isEmpty == true)

@@ -259,4 +259,10 @@ struct ShortcutKeyTests {
         let b = ShortcutBindings.make(hold: .fn, handsFree: nil, prompts: prompts)
         #expect(b[.rightControl] == nil)
     }
+
+    @Test func promptSlotIndexWorksOnCombinedRoles() {
+        let combined: ShortcutRoles = [.hold, .promptSlot3]
+        #expect(combined.promptSlotIndex == 2)
+        #expect(ShortcutRoles([.hold, .handsFree]).promptSlotIndex == nil)
+    }
 }
