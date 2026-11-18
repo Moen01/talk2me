@@ -98,7 +98,8 @@ final class StatusBarController: NSObject {
         // branch only fires during .recording; the armed branch fires until the clipboard is replaced.
         if let index = controller.recordingSlotIndex, controller.phase == .recording {
             symbol = "\(index + 1).circle"
-        } else if let index = controller.armedSlotIndex {
+        } else if controller.phase == .idle, let index = controller.armedSlotIndex {
+            // Only show the armed-slot badge when truly idle; any active phase has its own icon.
             symbol = "\(index + 1).circle"
         }
         item.button?.image = NSImage(systemSymbolName: symbol, accessibilityDescription: "Talk2Me: \(state)")

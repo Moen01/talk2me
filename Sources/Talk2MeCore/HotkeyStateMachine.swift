@@ -7,8 +7,8 @@ import Foundation
 ///   key again to finish, or Escape to discard.
 /// - A quick single tap of the hold key, or using it with another key (Fn+Delete), discards the recording.
 /// - Hold the orchestrate key: record for the orchestrator instead of the focused app.
-/// - Hold a prompt-slot key to record into its slot. Quick tap arms the slot (the controller pastes
-///   it when handling `.arm`). Double-tap (second press within `doubleTapWindow`) starts a
+/// - Hold a prompt-slot key to record into its slot. Quick tap arms the slot (copies saved text to
+///   the clipboard; Cmd+V pastes it). Double-tap (second press within `doubleTapWindow`) starts a
 ///   hands-free capture; Enter/Escape/key-again finishes or discards.
 public struct HotkeyStateMachine: Sendable {
     /// Which app or feature will receive the finished recording.
@@ -17,7 +17,7 @@ public struct HotkeyStateMachine: Sendable {
         case focusedApp
         /// Route the transcript to the orchestrator (Task 9).
         case orchestrator
-        /// Paste the transcript into prompt slot n (0–3).
+        /// Save the transcript into prompt slot n (0–3).
         case promptSlot(Int)
     }
 
@@ -25,8 +25,8 @@ public struct HotkeyStateMachine: Sendable {
         case startRecording(RecordingTarget)
         case stopRecording
         case cancelRecording
-        /// Arm a prompt slot for pasting: the controller pastes the slot's saved content.
-        /// Implies the recording started by the same key-down is discarded.
+        /// Arm a prompt slot: the controller copies the slot's saved text to the clipboard
+        /// so the user can Cmd+V it. The recording started by the same key-down is discarded.
         case arm(RecordingTarget)
     }
 
