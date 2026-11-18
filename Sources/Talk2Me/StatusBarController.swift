@@ -1,4 +1,5 @@
 import AppKit
+import Foundation
 
 /// The menu-bar icon and its menu.
 @MainActor
@@ -15,6 +16,8 @@ final class StatusBarController: NSObject {
     private let orchestrator: OrchestratorController
     private let settings: AppSettings
     private let actions: Actions
+    /// Checks whether the armed clipboard text is still present and refreshes the icon.
+    private var armedStateTimer: Timer?
     private let stateLine = NSMenuItem(title: "", action: nil, keyEquivalent: "")
     private let resultLine = NSMenuItem(title: "", action: nil, keyEquivalent: "")
     private let accessibilityItem = NSMenuItem(title: "Grant Accessibility Access…", action: #selector(openAccessibility), keyEquivalent: "")
@@ -52,7 +55,21 @@ final class StatusBarController: NSObject {
         startOrchestratorItem.target = self
         startOrchestratorItem.action = #selector(startOrchestrator)
         self.item.menu = menu
+
+        // Poll every 2 s to detect when the user copies something else over an armed slot.
+        armedStateTimer = Timer.scheduledTimer(withTimeInterval: 2, repeats: true) { [weak self] _ in
+            MainActor.assumeIsolated {
+                guard let self else { return }
+                self.controller.refreshArmedState()
+                self.refresh()
+            }
+        }
+
         refresh()
+    }
+
+    deinit {
+        armedStateTimer?.invalidate()
     }
 
     private func menuItem(title: String, action: Selector, key: String) -> NSMenuItem {
@@ -75,10 +92,12 @@ final class StatusBarController: NSObject {
         case .cleaning: ("sparkles", "Cleaning up with Claude…")
         case .inserting: ("text.cursor", "Pasting…")
         }
-        // Replace the icon with the slot number (1.circle … 4.circle) while the key is held
-        // and recording into the slot. recordingSlotIndex is cleared at stop, so this only
-        // fires during .recording — the .transcribing/.cleaning phases never reach here.
+        // Show the slot number while recording into it, or while a slot is armed on the clipboard.
+        // Recording wins when both are true. recordingSlotIndex is cleared at stop so the recording
+        // branch only fires during .recording; the armed branch fires until the clipboard is replaced.
         if let index = controller.recordingSlotIndex, controller.phase == .recording {
+            symbol = "\(index + 1).circle"
+        } else if let index = controller.armedSlotIndex {
             symbol = "\(index + 1).circle"
         }
         item.button?.image = NSImage(systemSymbolName: symbol, accessibilityDescription: "Talk2Me: \(state)")

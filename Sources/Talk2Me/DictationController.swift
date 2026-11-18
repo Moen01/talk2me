@@ -26,6 +26,8 @@ final class DictationController: ObservableObject {
     private(set) var recordingTargetLabel: String? { didSet { changed() } }
     /// Zero-based slot index while recording into a slot; nil otherwise. Always in sync with recordingTargetLabel.
     private(set) var recordingSlotIndex: Int?
+    /// Zero-based slot index whose text is on the clipboard, nil when cleared or overwritten.
+    private(set) var armedSlotIndex: Int? { didSet { changed() } }
 
     private func changed() {
         objectWillChange.send()
@@ -126,7 +128,10 @@ final class DictationController: ObservableObject {
                 startRecording()
             case .stopRecording: stopRecording()
             case .cancelRecording: cancelRecording()
-            case .arm: break // Task 4 wires this
+            case .arm(let target):
+                // Cancel the recording started by the arming tap before arming the slot.
+                cancelRecording()
+                if case .promptSlot(let n) = target { armSlot(n) }
             case nil: break
             }
             isHandsFree = machine.state == .handsFree
@@ -274,6 +279,9 @@ final class DictationController: ObservableObject {
             )
             let slot = PromptSlot(text: outcome.text, savedAt: Date())
             settings.promptSlots[n] = slot
+            // A fresh recording into this slot replaces whatever was armed — the old clipboard text
+            // is stale now regardless of what else the user may have copied.
+            if armedSlotIndex == n { armedSlotIndex = nil }
             let wordCount = slot.wordCount
             if outcome.cleaned {
                 lastResult = "Saved to Prompt \(n + 1) (\(wordCount) words)."
@@ -355,19 +363,30 @@ final class DictationController: ObservableObject {
 
     // MARK: - Prompt bank
 
-    /// Paste the saved text of slot n into the focused app. Never touches the microphone.
-    private func pasteSlot(_ n: Int) async {
+    /// Arms slot n: writes its text to the clipboard so the user can Cmd+V it anywhere.
+    /// An empty slot shows a status message instead.
+    func armSlot(_ n: Int) {
         let slot = settings.promptSlots[n]
         guard !slot.isEmpty else {
             lastResult = "Prompt \(n + 1) is empty."
             return
         }
-        let result = await inserter.insert(slot.text)
-        switch result {
-        case .pasted:
-            lastResult = "Pasted Prompt \(n + 1)."
-        case .copiedOnly(let reason):
-            lastResult = "Prompt \(n + 1): \(reason)"
+        let pb = NSPasteboard.general
+        pb.clearContents()
+        pb.setString(slot.text, forType: .string)
+        armedSlotIndex = n
+        lastResult = "Prompt \(n + 1) armed — Cmd+V to paste."
+    }
+
+    /// Clears `armedSlotIndex` when the clipboard no longer holds the armed slot's text
+    /// (the user copied something else). Called periodically by StatusBarController.
+    func refreshArmedState() {
+        guard let n = armedSlotIndex else { return }
+        // String compare is the source of truth; changeCount is bumped by TextInserter's
+        // restore cycle while preserving the armed text, so we must not use it.
+        if NSPasteboard.general.string(forType: .string) != settings.promptSlots[n].text {
+            armedSlotIndex = nil
+            onChange?()
         }
     }
 
