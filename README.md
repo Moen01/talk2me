@@ -44,6 +44,8 @@ Right Control, Left Option, Left Command) or click **Record a key…** and press
 - Left and right modifiers are separate, so Right Option can dictate while Left Option still
   types special characters.
 - A regular key such as F13 is taken over completely: it won't type in other apps.
+- Any shortcut can also be a combo — hold modifier keys while pressing the base key to record
+  something like ⌘3 or ⌃⌥1 instead of a plain key.
 - Escape, Enter and Caps Lock can't be used, because Escape and Enter control hands-free mode
   and Caps Lock toggles instead of holding.
 
@@ -98,19 +100,21 @@ sends your spoken text to it via AppleScript.
 
 ### Prompt Bank
 
-Prompt Bank gives you up to four reusable text slots, each bound to its own key. Use them
-to record a prompt once and paste it into any app with a single tap — without retyping or
-clipboard hunting.
+Prompt Bank gives you up to four reusable text slots, each bound to its own key. Record a
+prompt once; tap the key to arm it onto the clipboard, then paste anywhere with Cmd+V.
 
-**Off by default.** Enable in **Settings > Prompt Bank**, then assign a key to each slot
-you want to use.
+**Off by default.** Enable in **Settings > Prompt Bank**, then assign a key to each slot.
+The preset list offers ⌃⌥1 through ⌃⌥4 as ready-made chord shortcuts so the keys don't
+interfere with typing.
 
 | Gesture | What happens |
 | --- | --- |
 | Hold the slot key and speak | Records your speech, cleans it up, and saves it into the slot |
-| Tap the slot key (quick press and release) | Pastes the saved text into the focused app |
-| Double-tap the slot key | Starts hands-free recording into the slot for longer dictation |
-| Record again | Replaces whatever is in the slot |
+| Double-tap the slot key | Starts a hands-free recording into the slot for long dictation; Enter (or the key again) finishes and saves, Escape discards and keeps the old text |
+| Tap the slot key (quick press) | Loads the slot onto the clipboard; the menu-bar icon shows the slot number while it is loaded |
+| Cmd+V in any app | Pastes the loaded text (repeatable — Cmd+V again pastes the same text) |
+| Copy something else | Unloads the slot from the clipboard; the slot still holds its text |
+| Record again | Replaces the slot with the new recording |
 
 Slots survive restarts — the text is saved to disk as soon as recording finishes. Each slot
 shows a one-line preview and its age in Settings so you always know what is stored. The

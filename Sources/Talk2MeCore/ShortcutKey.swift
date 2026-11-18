@@ -1,12 +1,30 @@
 import Foundation
 
-/// A key used as a dictation shortcut: a modifier on its own (Fn, Right Option, …) or a regular key (F13, §, …).
+/// A key used as a dictation shortcut: a modifier on its own (Fn, Right Option, …), a regular key
+/// (F13, §, …), or a chord (modifier bits + base key code, e.g. ⌘3).
 public struct ShortcutKey: Codable, Hashable, Sendable {
     public let keyCode: Int64
+    /// CGEventFlags raw bits for the required modifier keys (0 = plain key, non-zero = chord).
+    public let modifiers: UInt64
 
-    public init(keyCode: Int64) {
+    public init(keyCode: Int64, modifiers: UInt64 = 0) {
         self.keyCode = keyCode
+        self.modifiers = modifiers
     }
+
+    // MARK: - Codable: custom decode so legacy payloads without "modifiers" default to 0.
+
+    private enum CodingKeys: String, CodingKey {
+        case keyCode, modifiers
+    }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        keyCode = try c.decode(Int64.self, forKey: .keyCode)
+        modifiers = try c.decodeIfPresent(UInt64.self, forKey: .modifiers) ?? 0
+    }
+
+    // MARK: - Well-known plain keys
 
     public static let fn = ShortcutKey(keyCode: 63)
     public static let rightOption = ShortcutKey(keyCode: 61)
@@ -35,25 +53,86 @@ public struct ShortcutKey: Codable, Hashable, Sendable {
         56: 0x02, 60: 0x04, // left, right Shift
     ]
 
-    /// Escape and Enter control hands-free mode, and Caps Lock toggles instead of holding,
-    /// so none of them can be a shortcut.
+    // MARK: - Chord modifier mask (CGEventFlags device-independent bits)
+    // Raw values from CoreGraphics: maskShift=0x20000, maskControl=0x40000,
+    // maskAlternate=0x80000, maskCommand=0x100000.
+
+    /// Union of the ⌘⌃⌥⇧ device-independent CGEventFlags bits.
+    public static let chordModifierMask: UInt64 = 0x20000 | 0x40000 | 0x80000 | 0x100000
+
+    // MARK: - Chord preset factory
+
+    /// ⌃⌥+digit preset for prompt slot chords (digits 1–4 → keyCodes 18–21).
+    public static func presetChord(_ digit: Int) -> ShortcutKey {
+        // keyCode for digit 1 is 18, 2 is 19, 3 is 20, 4 is 21.
+        let keyCode = Int64(17 + digit)
+        // maskControl | maskAlternate
+        let mods: UInt64 = 0x40000 | 0x80000
+        return ShortcutKey(keyCode: keyCode, modifiers: mods)
+    }
+
+    // MARK: - Escape and Enter control hands-free mode, and Caps Lock toggles instead of holding,
+    // so none of them can be a shortcut.
+
     public static func isAllowed(keyCode: Int64) -> Bool {
         keyCode != escapeKeyCode && keyCode != capsLockKeyCode && !enterKeyCodes.contains(keyCode)
     }
 
-    public var isModifier: Bool { Self.modifierFlagMasks[keyCode] != nil }
-    public var isFn: Bool { keyCode == 63 || keyCode == Self.globeKeyCode }
+    // MARK: - Key classification
 
-    /// Whether a key event with this key code belongs to this shortcut key.
+    /// True when this is a physical modifier key (Fn, Cmd, Option, Ctrl, Shift).
+    /// Chords are never modifiers even if their base key happens to match.
+    public var isModifier: Bool { modifiers == 0 && Self.modifierFlagMasks[keyCode] != nil }
+
+    /// True when this is the Fn / globe key.
+    /// Chords are never Fn.
+    public var isFn: Bool { modifiers == 0 && (keyCode == 63 || keyCode == Self.globeKeyCode) }
+
+    /// True when this key requires modifier bits to be held (⌘3, ⌃⌥1, …).
+    public var isChord: Bool { modifiers != 0 }
+
+    // MARK: - Matching
+
+    /// Whether a key event with this key code belongs to this shortcut key (plain-key path).
     public func matches(_ code: Int64) -> Bool {
         code == keyCode || (isFn && (code == 63 || code == Self.globeKeyCode))
     }
 
-    /// For modifier keys: whether this key is down in a flags-changed event's flags.
+    /// Whether a key-down event (code + flags) activates this chord.
+    /// For plain keys (modifiers == 0) this is just a code match; the caller applies the old passthrough rule.
+    public func matchesChord(code: Int64, flags: UInt64) -> Bool {
+        guard code == keyCode else { return false }
+        // All required modifier bits must be present in the event flags (extras are allowed).
+        return (flags & Self.chordModifierMask) & modifiers == modifiers
+    }
+
+    /// True when the chord should be considered released:
+    /// either the base key was lifted, or at least one required modifier is no longer held.
+    public func releasedBy(code: Int64, flags: UInt64) -> Bool {
+        if code == keyCode { return true }
+        // Any required modifier bit missing from the current flags → chord is broken.
+        return (flags & modifiers) != modifiers
+    }
+
+    /// Modifier symbol prefix in ⌃⌥⇧⌘ order (matches macOS menu display convention).
+    public var chordPrefix: String {
+        guard modifiers != 0 else { return "" }
+        var prefix = ""
+        if modifiers & 0x40000 != 0 { prefix += "⌃" }  // maskControl
+        if modifiers & 0x80000 != 0 { prefix += "⌥" }  // maskAlternate
+        if modifiers & 0x20000 != 0 { prefix += "⇧" }  // maskShift
+        if modifiers & 0x100000 != 0 { prefix += "⌘" } // maskCommand
+        return prefix
+    }
+
+    // MARK: - For modifier keys: whether this key is down in a flags-changed event's flags.
+
     public func isDown(flags: UInt64) -> Bool {
         guard let mask = Self.modifierFlagMasks[keyCode] else { return false }
         return flags & mask != 0
     }
+
+    // MARK: - Display names
 
     /// A readable name for keys that don't type a character. Character keys are named
     /// from the current keyboard layout by the app.

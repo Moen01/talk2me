@@ -1,4 +1,6 @@
 import Testing
+import Foundation
+import CoreGraphics
 @testable import Talk2MeCore
 
 /// The default setup: one key (Fn) both holds to dictate and double-taps for hands-free.
@@ -183,12 +185,44 @@ struct HotkeyStateMachineTests {
         #expect(m.shortcutUp(.promptSlot(1), at: 1) == .stopRecording)
     }
 
-    @Test func slotQuickTapThenExpiryPastes() {
+    @Test func slotQuickTapArmsImmediately() {
         var m = HotkeyStateMachine()
         _ = m.shortcutDown(.promptSlot(0), at: 0)
-        #expect(m.shortcutUp(.promptSlot(0), at: 0.1) == .cancelRecording)
-        #expect(m.slotTapExpired(at: 0.6) == .paste(.promptSlot(0)))
+        #expect(m.shortcutUp(.promptSlot(0), at: 0.1) == .arm(.promptSlot(0)))
         #expect(m.state == .idle)
+    }
+
+    @Test func slotDoubleTapStillRamblesAfterArm() {
+        var m = HotkeyStateMachine()
+        _ = m.shortcutDown(.promptSlot(2), at: 0)
+        #expect(m.shortcutUp(.promptSlot(2), at: 0.1) == .arm(.promptSlot(2)))
+        #expect(m.shortcutDown(.promptSlot(2), at: 0.3) == .startRecording(.promptSlot(2)))
+        #expect(m.shortcutUp(.promptSlot(2), at: 0.4) == nil)
+        #expect(m.state == .handsFree)
+    }
+
+    @Test func slowSecondSlotTapArmsAgain() {
+        var m = HotkeyStateMachine()
+        _ = m.shortcutDown(.promptSlot(0), at: 0)
+        _ = m.shortcutUp(.promptSlot(0), at: 0.1)
+        _ = m.shortcutDown(.promptSlot(0), at: 1.0)   // outside window
+        #expect(m.shortcutUp(.promptSlot(0), at: 1.1) == .arm(.promptSlot(0)))
+    }
+
+    @Test func slotLongHoldStillSaves() {
+        var m = HotkeyStateMachine()
+        _ = m.shortcutDown(.promptSlot(1), at: 0)
+        #expect(m.shortcutUp(.promptSlot(1), at: 1) == .stopRecording)
+    }
+
+    @Test func longSecondHoldStillSavesAndNextTapArms() {
+        var m = HotkeyStateMachine()
+        _ = m.shortcutDown(.promptSlot(0), at: 0)
+        _ = m.shortcutUp(.promptSlot(0), at: 0.1)        // arm
+        _ = m.shortcutDown(.promptSlot(0), at: 0.3)      // second press…
+        #expect(m.shortcutUp(.promptSlot(0), at: 2.0) == .stopRecording)  // …held long: saves
+        _ = m.shortcutDown(.promptSlot(0), at: 10)
+        #expect(m.shortcutUp(.promptSlot(0), at: 10.1) == .arm(.promptSlot(0)))
     }
 
     @Test func slotDoubleTapGoesHandsFree() {
@@ -199,40 +233,6 @@ struct HotkeyStateMachineTests {
         #expect(m.shortcutUp(.promptSlot(2), at: 0.4) == nil)       // promoted, keeps recording
         #expect(m.state == .handsFree)
         #expect(m.otherKeyDown(36, at: 2) == .stopRecording)        // Enter finishes
-    }
-
-    @Test func expiredTapDoesNotPasteTwice() {
-        var m = HotkeyStateMachine()
-        _ = m.shortcutDown(.promptSlot(0), at: 0)
-        _ = m.shortcutUp(.promptSlot(0), at: 0.1)
-        _ = m.slotTapExpired(at: 0.6)
-        #expect(m.slotTapExpired(at: 0.7) == nil)
-    }
-
-    @Test func secondTapAfterExpiryStartsANewTapCycle() {
-        var m = HotkeyStateMachine()
-        _ = m.shortcutDown(.promptSlot(0), at: 0)
-        _ = m.shortcutUp(.promptSlot(0), at: 0.1)
-        _ = m.slotTapExpired(at: 0.6)                                // pasted
-        _ = m.shortcutDown(.promptSlot(0), at: 0.7)
-        #expect(m.shortcutUp(.promptSlot(0), at: 0.75) == .cancelRecording) // new first tap, not hands-free
-        if case .slotTapping = m.state {} else { Issue.record("expected slotTapping") }
-    }
-
-    @Test func differentKeyDuringSlotTapAbandonsPaste() {
-        var m = HotkeyStateMachine()
-        _ = m.shortcutDown(.promptSlot(0), at: 0)
-        _ = m.shortcutUp(.promptSlot(0), at: 0.1)
-        #expect(m.shortcutDown(.hold, at: 0.2) == .startRecording(.focusedApp))
-        #expect(m.slotTapExpired(at: 0.6) == nil)
-    }
-
-    @Test func otherKeyDuringSlotTapAbandonsPaste() {
-        var m = HotkeyStateMachine()
-        _ = m.shortcutDown(.promptSlot(0), at: 0)
-        _ = m.shortcutUp(.promptSlot(0), at: 0.1)
-        _ = m.otherKeyDown(5, at: 0.2)
-        #expect(m.slotTapExpired(at: 0.6) == nil)
     }
 
     @Test func slotComboCancelsLikeHoldKey() {
@@ -248,25 +248,6 @@ struct HotkeyStateMachineTests {
         _ = m.shortcutDown(.promptSlot(1), at: 0.3)
         _ = m.shortcutUp(.promptSlot(1), at: 0.4)
         #expect(m.otherKeyDown(ShortcutKey.escapeKeyCode, at: 1) == .cancelRecording)
-    }
-
-    @Test func longSecondHoldDoesNotPoisonTheNextTap() {
-        var m = HotkeyStateMachine()
-        _ = m.shortcutDown(.promptSlot(0), at: 0)
-        _ = m.shortcutUp(.promptSlot(0), at: 0.1)      // first tap
-        _ = m.shortcutDown(.promptSlot(0), at: 0.3)    // second press…
-        #expect(m.shortcutUp(.promptSlot(0), at: 2.0) == .stopRecording)  // …held long: saves
-        _ = m.shortcutDown(.promptSlot(0), at: 10)
-        #expect(m.shortcutUp(.promptSlot(0), at: 10.1) == .cancelRecording) // fresh tap cycle, NOT hands-free
-        if case .slotTapping = m.state {} else { Issue.record("expected slotTapping") }
-    }
-
-    @Test func resetClearsPendingSlotTap() {
-        var m = HotkeyStateMachine()
-        _ = m.shortcutDown(.promptSlot(0), at: 0)
-        _ = m.shortcutUp(.promptSlot(0), at: 0.1)
-        m.reset()
-        #expect(m.slotTapExpired(at: 0.6) == nil)
     }
 }
 
@@ -358,5 +339,41 @@ struct ShortcutKeyTests {
         let combined: ShortcutRoles = [.hold, .promptSlot3]
         #expect(combined.promptSlotIndex == 2)
         #expect(ShortcutRoles([.hold, .handsFree]).promptSlotIndex == nil)
+    }
+
+    // MARK: - Chord / modifier tests (Task 1 — Prompt Bank v2)
+
+    @Test func legacySingleKeyDecodesWithZeroModifiers() throws {
+        let data = Data(#"{"keyCode":63}"#.utf8)
+        let key = try JSONDecoder().decode(ShortcutKey.self, from: data)
+        #expect(key == .fn)
+        #expect(key.modifiers == 0)
+    }
+
+    @Test func chordAndBareKeyAreDistinct() {
+        let bare = ShortcutKey(keyCode: 20)
+        let cmd3 = ShortcutKey(keyCode: 20, modifiers: CGEventFlags.maskCommand.rawValue)
+        #expect(bare != cmd3)
+        #expect(Set([bare, cmd3]).count == 2)
+    }
+
+    @Test func chordMatchingToleratesExtraModifiers() {
+        let cmd3 = ShortcutKey(keyCode: 20, modifiers: CGEventFlags.maskCommand.rawValue)
+        let flags = CGEventFlags.maskCommand.rawValue | CGEventFlags.maskAlphaShift.rawValue
+        #expect(cmd3.matchesChord(code: 20, flags: flags))
+        #expect(!cmd3.matchesChord(code: 20, flags: CGEventFlags.maskShift.rawValue))
+    }
+
+    @Test func chordReleaseByModifierOrBaseKey() {
+        let cmd3 = ShortcutKey(keyCode: 20, modifiers: CGEventFlags.maskCommand.rawValue)
+        #expect(cmd3.releasedBy(code: 20, flags: CGEventFlags.maskCommand.rawValue))   // base key up
+        #expect(cmd3.releasedBy(code: 999, flags: 0))                                   // ⌘ released
+        #expect(!cmd3.releasedBy(code: 999, flags: CGEventFlags.maskCommand.rawValue)) // unrelated key up
+    }
+
+    @Test func chordPrefixOrdersSymbols() {
+        let key = ShortcutKey(keyCode: 35,
+            modifiers: CGEventFlags.maskCommand.rawValue | CGEventFlags.maskShift.rawValue | CGEventFlags.maskControl.rawValue)
+        #expect(key.chordPrefix == "⌃⇧⌘")
     }
 }
