@@ -68,8 +68,8 @@ final class DictationController: ObservableObject {
     /// Key presses matter only while a shortcut key is down or hands-free mode is on.
     var wantsKeyEvents: Bool {
         switch machine.state {
-        case .holding, .tapping, .handsFree: true
-        case .idle, .awaitingRelease, .slotTapping: false
+        case .holding, .tapping, .handsFree, .slotTapping: true
+        case .idle, .awaitingRelease: false
         }
     }
 
