@@ -110,6 +110,7 @@ interfere with typing.
 | Gesture | What happens |
 | --- | --- |
 | Hold the slot key and speak | Records your speech, cleans it up, and saves it into the slot |
+| Double-tap the slot key | Starts a hands-free recording into the slot for long dictation; Enter (or the key again) finishes and saves, Escape discards and keeps the old text |
 | Tap the slot key (quick press) | Loads the slot onto the clipboard; the menu-bar icon shows the slot number while it is loaded |
 | Cmd+V in any app | Pastes the loaded text (repeatable — Cmd+V again pastes the same text) |
 | Copy something else | Unloads the slot from the clipboard; the slot still holds its text |
