@@ -250,6 +250,17 @@ struct HotkeyStateMachineTests {
         #expect(m.otherKeyDown(ShortcutKey.escapeKeyCode, at: 1) == .cancelRecording)
     }
 
+    @Test func longSecondHoldDoesNotPoisonTheNextTap() {
+        var m = HotkeyStateMachine()
+        _ = m.shortcutDown(.promptSlot(0), at: 0)
+        _ = m.shortcutUp(.promptSlot(0), at: 0.1)      // first tap
+        _ = m.shortcutDown(.promptSlot(0), at: 0.3)    // second press…
+        #expect(m.shortcutUp(.promptSlot(0), at: 2.0) == .stopRecording)  // …held long: saves
+        _ = m.shortcutDown(.promptSlot(0), at: 10)
+        #expect(m.shortcutUp(.promptSlot(0), at: 10.1) == .cancelRecording) // fresh tap cycle, NOT hands-free
+        if case .slotTapping = m.state {} else { Issue.record("expected slotTapping") }
+    }
+
     @Test func resetClearsPendingSlotTap() {
         var m = HotkeyStateMachine()
         _ = m.shortcutDown(.promptSlot(0), at: 0)

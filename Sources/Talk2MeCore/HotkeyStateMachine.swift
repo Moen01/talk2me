@@ -106,6 +106,7 @@ public struct HotkeyStateMachine: Sendable {
             guard time - since < tapThreshold else {
                 state = .idle
                 lastTapAt = nil
+                slotSecondTapHolding = false
                 return .stopRecording
             }
             // Slot key double-tap: second quick release promotes to hands-free.
