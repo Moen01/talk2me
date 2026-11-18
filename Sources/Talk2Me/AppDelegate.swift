@@ -61,6 +61,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             settings.$handsFreeEnabled.map { _ in () }.eraseToAnyPublisher(),
             settings.$orchestrateEnabled.map { _ in () }.eraseToAnyPublisher(),
             settings.$orchestrateKey.map { _ in () }.eraseToAnyPublisher(),
+            settings.$promptBankEnabled.map { _ in () }.eraseToAnyPublisher(),
+            settings.$promptKeys.map { _ in () }.eraseToAnyPublisher(),
         ])
         .receive(on: RunLoop.main)
         .sink { [weak self] in

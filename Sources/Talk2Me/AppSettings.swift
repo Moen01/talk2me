@@ -21,6 +21,9 @@ final class AppSettings: ObservableObject {
         static let orchestrateEnabled = "orchestrateEnabled"
         static let orchestrateKeyCode = "orchestrateKeyCode"
         static let orchestrateRoot = "orchestrateRoot"
+        static let promptBankEnabled = "promptBankEnabled"
+        static let promptKeyCodes = "promptKeyCodes"
+        static let promptSlots = "promptSlots"
     }
 
     private let defaults: UserDefaults
@@ -41,11 +44,25 @@ final class AppSettings: ObservableObject {
     /// The folder the orchestrator session starts in.
     @Published var orchestrateRoot: String { didSet { defaults.set(orchestrateRoot, forKey: Key.orchestrateRoot) } }
 
+    @Published var promptBankEnabled: Bool { didSet { defaults.set(promptBankEnabled, forKey: Key.promptBankEnabled) } }
+    /// Four optional slot keys. Stored as JSON `[Int]` with -1 for unbound.
+    @Published var promptKeys: [ShortcutKey?] {
+        didSet {
+            let codes = promptKeys.map { $0.map { Int($0.keyCode) } ?? -1 }
+            defaults.set(try? JSONEncoder().encode(codes), forKey: Key.promptKeyCodes)
+        }
+    }
+    /// Four saved prompt texts. Stored as JSON.
+    @Published var promptSlots: [PromptSlot] {
+        didSet { defaults.set(try? JSONEncoder().encode(promptSlots), forKey: Key.promptSlots) }
+    }
+
     var shortcutBindings: [ShortcutKey: ShortcutRoles] {
         ShortcutBindings.make(
             hold: holdKey,
             handsFree: handsFreeEnabled ? handsFreeKey : nil,
-            orchestrate: orchestrateEnabled ? orchestrateKey : nil
+            orchestrate: orchestrateEnabled ? orchestrateKey : nil,
+            prompts: promptBankEnabled ? promptKeys : []
         )
     }
     @Published var claudePath: String { didSet { defaults.set(claudePath, forKey: Key.claudePath) } }
@@ -91,6 +108,20 @@ final class AppSettings: ObservableObject {
         orchestrateEnabled = defaults.object(forKey: Key.orchestrateEnabled) as? Bool ?? false
         orchestrateKey = storedKey(Key.orchestrateKeyCode) ?? .leftOption
         orchestrateRoot = defaults.string(forKey: Key.orchestrateRoot) ?? NSHomeDirectory()
+        promptBankEnabled = defaults.object(forKey: Key.promptBankEnabled) as? Bool ?? false
+        // Decode stored codes (-1 = unbound), normalize to exactly 4 entries.
+        let loadedCodes: [Int] = defaults.data(forKey: Key.promptKeyCodes)
+            .flatMap { try? JSONDecoder().decode([Int].self, from: $0) } ?? []
+        let normalizedKeys: [ShortcutKey?] = (0..<4).map { i in
+            guard i < loadedCodes.count else { return nil }
+            let code = loadedCodes[i]
+            guard code >= 0, ShortcutKey.isAllowed(keyCode: Int64(code)) else { return nil }
+            return ShortcutKey(keyCode: Int64(code))
+        }
+        promptKeys = normalizedKeys
+        let loadedSlots: [PromptSlot] = defaults.data(forKey: Key.promptSlots)
+            .flatMap { try? JSONDecoder().decode([PromptSlot].self, from: $0) } ?? []
+        promptSlots = (0..<4).map { i in i < loadedSlots.count ? loadedSlots[i] : PromptSlot() }
         claudePath = defaults.string(forKey: Key.claudePath) ?? ""
         extraInstructions = defaults.string(forKey: Key.extraInstructions) ?? ""
         dictionary = defaults.data(forKey: Key.dictionary)

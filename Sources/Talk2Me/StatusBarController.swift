@@ -65,7 +65,12 @@ final class StatusBarController: NSObject {
         let (symbol, state): (String, String) = switch controller.phase {
         case .idle: ("waveform", controller.readiness)
         case .recording where controller.isHandsFree: ("mic.fill", "Hands-free: press Enter to finish, Esc to discard")
-        case .recording: ("mic.fill", "Listening… release \(controller.holdKeyName) to finish")
+        case .recording:
+            if let label = controller.recordingTargetLabel {
+                ("mic.fill", "Recording → \(label)")
+            } else {
+                ("mic.fill", "Listening… release \(controller.holdKeyName) to finish")
+            }
         case .transcribing: ("ellipsis.circle", "Transcribing on this Mac…")
         case .cleaning: ("sparkles", "Cleaning up with Claude…")
         case .inserting: ("text.cursor", "Pasting…")
