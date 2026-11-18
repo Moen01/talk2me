@@ -1,4 +1,6 @@
 import Testing
+import Foundation
+import CoreGraphics
 @testable import Talk2MeCore
 
 /// The default setup: one key (Fn) both holds to dictate and double-taps for hands-free.
@@ -358,5 +360,41 @@ struct ShortcutKeyTests {
         let combined: ShortcutRoles = [.hold, .promptSlot3]
         #expect(combined.promptSlotIndex == 2)
         #expect(ShortcutRoles([.hold, .handsFree]).promptSlotIndex == nil)
+    }
+
+    // MARK: - Chord / modifier tests (Task 1 — Prompt Bank v2)
+
+    @Test func legacySingleKeyDecodesWithZeroModifiers() throws {
+        let data = Data(#"{"keyCode":63}"#.utf8)
+        let key = try JSONDecoder().decode(ShortcutKey.self, from: data)
+        #expect(key == .fn)
+        #expect(key.modifiers == 0)
+    }
+
+    @Test func chordAndBareKeyAreDistinct() {
+        let bare = ShortcutKey(keyCode: 20)
+        let cmd3 = ShortcutKey(keyCode: 20, modifiers: CGEventFlags.maskCommand.rawValue)
+        #expect(bare != cmd3)
+        #expect(Set([bare, cmd3]).count == 2)
+    }
+
+    @Test func chordMatchingToleratesExtraModifiers() {
+        let cmd3 = ShortcutKey(keyCode: 20, modifiers: CGEventFlags.maskCommand.rawValue)
+        let flags = CGEventFlags.maskCommand.rawValue | CGEventFlags.maskAlphaShift.rawValue
+        #expect(cmd3.matchesChord(code: 20, flags: flags))
+        #expect(!cmd3.matchesChord(code: 20, flags: CGEventFlags.maskShift.rawValue))
+    }
+
+    @Test func chordReleaseByModifierOrBaseKey() {
+        let cmd3 = ShortcutKey(keyCode: 20, modifiers: CGEventFlags.maskCommand.rawValue)
+        #expect(cmd3.releasedBy(code: 20, flags: CGEventFlags.maskCommand.rawValue))   // base key up
+        #expect(cmd3.releasedBy(code: 999, flags: 0))                                   // ⌘ released
+        #expect(!cmd3.releasedBy(code: 999, flags: CGEventFlags.maskCommand.rawValue)) // unrelated key up
+    }
+
+    @Test func chordPrefixOrdersSymbols() {
+        let key = ShortcutKey(keyCode: 35,
+            modifiers: CGEventFlags.maskCommand.rawValue | CGEventFlags.maskShift.rawValue | CGEventFlags.maskControl.rawValue)
+        #expect(key.chordPrefix == "⌃⇧⌘")
     }
 }
