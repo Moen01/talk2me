@@ -24,10 +24,18 @@ final class DictationController: ObservableObject {
     var sendToOrchestrator: ((String) async -> String)?
     /// "Prompt N" while actively recording into a slot; nil otherwise.
     private(set) var recordingTargetLabel: String? { didSet { changed() } }
+    /// Zero-based slot index while recording into a slot; nil otherwise. Always in sync with recordingTargetLabel.
+    private(set) var recordingSlotIndex: Int?
 
     private func changed() {
         objectWillChange.send()
         onChange?()
+    }
+
+    /// Sets both slot-capture properties together so they can never drift.
+    private func setSlotCapture(slotIndex: Int?) {
+        recordingSlotIndex = slotIndex
+        recordingTargetLabel = slotIndex.map { "Prompt \($0 + 1)" }
     }
 
     var holdKeyName: String { KeyboardLayout.name(of: settings.holdKey) }
@@ -161,13 +169,13 @@ final class DictationController: ObservableObject {
             machine.reset()
             // Refused start must not leave an orchestrator target armed.
             pendingTarget = .focusedApp
-            recordingTargetLabel = nil
+            setSlotCapture(slotIndex: nil)
             return
         }
         guard let prepared, prepared.localeID == settings.localeID else {
             lastResult = "Not ready yet: \(readiness)"
             machine.reset()
-            recordingTargetLabel = nil
+            setSlotCapture(slotIndex: nil)
             Task { await prepareDictation() }
             return
         }
@@ -190,9 +198,9 @@ final class DictationController: ObservableObject {
         current = (session, started)
         // Show "Prompt N" in the menu bar while recording into a slot.
         if case .promptSlot(let n) = pendingTarget {
-            recordingTargetLabel = "Prompt \(n + 1)"
+            setSlotCapture(slotIndex: n)
         } else {
-            recordingTargetLabel = nil
+            setSlotCapture(slotIndex: nil)
         }
         phase = .recording
     }
@@ -209,7 +217,7 @@ final class DictationController: ObservableObject {
         current = nil
         // A cancelled recording must not leave an orchestrator target visible to the next recording.
         pendingTarget = .focusedApp
-        recordingTargetLabel = nil
+        setSlotCapture(slotIndex: nil)
         if phase == .recording { phase = .idle }
     }
 
@@ -223,7 +231,7 @@ final class DictationController: ObservableObject {
         // Consume the target now so it cannot be overwritten by a concurrent startRecording.
         let target = pendingTarget
         pendingTarget = .focusedApp
-        recordingTargetLabel = nil
+        setSlotCapture(slotIndex: nil)
         phase = .transcribing
         Task { await finish(current.session, started: current.started, target: target) }
     }

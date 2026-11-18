@@ -62,7 +62,7 @@ final class StatusBarController: NSObject {
     }
 
     func refresh() {
-        let (symbol, state): (String, String) = switch controller.phase {
+        var (symbol, state): (String, String) = switch controller.phase {
         case .idle: ("waveform", controller.readiness)
         case .recording where controller.isHandsFree: ("mic.fill", "Hands-free: press Enter to finish, Esc to discard")
         case .recording:
@@ -74,6 +74,13 @@ final class StatusBarController: NSObject {
         case .transcribing: ("ellipsis.circle", "Transcribing on this Mac…")
         case .cleaning: ("sparkles", "Cleaning up with Claude…")
         case .inserting: ("text.cursor", "Pasting…")
+        }
+        // During an active slot capture, replace the icon with the slot number (1.circle … 4.circle).
+        let isActiveCapture = controller.phase == .recording
+            || controller.phase == .transcribing
+            || controller.phase == .cleaning
+        if let index = controller.recordingSlotIndex, isActiveCapture {
+            symbol = "\(index + 1).circle"
         }
         item.button?.image = NSImage(systemSymbolName: symbol, accessibilityDescription: "Talk2Me: \(state)")
         stateLine.title = state
