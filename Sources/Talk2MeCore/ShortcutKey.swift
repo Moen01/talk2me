@@ -87,11 +87,41 @@ public struct ShortcutRoles: OptionSet, Hashable, Sendable {
     public static let handsFree = ShortcutRoles(rawValue: 2)
     /// Open the Orchestrate sidebar.
     public static let orchestrate = ShortcutRoles(rawValue: 4)
+    /// Capture to prompt slot 1.
+    public static let promptSlot1 = ShortcutRoles(rawValue: 8)
+    /// Capture to prompt slot 2.
+    public static let promptSlot2 = ShortcutRoles(rawValue: 16)
+    /// Capture to prompt slot 3.
+    public static let promptSlot3 = ShortcutRoles(rawValue: 32)
+    /// Capture to prompt slot 4.
+    public static let promptSlot4 = ShortcutRoles(rawValue: 64)
+
+    /// Return the prompt slot role for the given index (0–3).
+    public static func promptSlot(_ index: Int) -> ShortcutRoles {
+        switch index {
+        case 0: return .promptSlot1
+        case 1: return .promptSlot2
+        case 2: return .promptSlot3
+        case 3: return .promptSlot4
+        default: return ShortcutRoles(rawValue: 0)
+        }
+    }
+
+    /// Return the prompt slot index (0–3) if this role is a prompt slot, nil otherwise.
+    public var promptSlotIndex: Int? {
+        switch rawValue {
+        case 8: return 0
+        case 16: return 1
+        case 32: return 2
+        case 64: return 3
+        default: return nil
+        }
+    }
 }
 
 /// Which keys to watch, and what each one does.
 public enum ShortcutBindings {
-    public static func make(hold: ShortcutKey, handsFree: ShortcutKey?, orchestrate: ShortcutKey? = nil) -> [ShortcutKey: ShortcutRoles] {
+    public static func make(hold: ShortcutKey, handsFree: ShortcutKey?, orchestrate: ShortcutKey? = nil, prompts: [ShortcutKey?] = []) -> [ShortcutKey: ShortcutRoles] {
         var bindings: [ShortcutKey: ShortcutRoles] = [:]
 
         // Add hold key
@@ -111,6 +141,20 @@ public enum ShortcutBindings {
             if orchestrate != hold && orchestrate != handsFree {
                 bindings[orchestrate] = .orchestrate
             }
+        }
+
+        // Add prompt keys, limiting to 4 entries, skipping those that collide with existing bindings
+        var promptKeysAlreadyBound: Set<ShortcutKey> = []
+        for (index, promptKey) in prompts.enumerated() {
+            guard index < 4, let promptKey = promptKey else { continue }
+
+            // Skip if already bound to a different role
+            if bindings[promptKey] != nil || promptKeysAlreadyBound.contains(promptKey) {
+                continue
+            }
+
+            bindings[promptKey] = .promptSlot(index)
+            promptKeysAlreadyBound.insert(promptKey)
         }
 
         return bindings

@@ -237,4 +237,26 @@ struct ShortcutKeyTests {
         let b = ShortcutBindings.make(hold: .fn, handsFree: .rightOption, orchestrate: .rightOption)
         #expect(b[.rightOption] == .handsFree)
     }
+
+    @Test func promptKeysGetTheirSlotRoles() {
+        let b = ShortcutBindings.make(hold: .fn, handsFree: .fn, orchestrate: nil,
+                                      prompts: [.rightCommand, nil, .rightControl, nil])
+        #expect(b[.rightCommand] == .promptSlot(0))
+        #expect(b[.rightControl] == .promptSlot(2))
+        #expect(b[.rightCommand]?.promptSlotIndex == 0)
+    }
+
+    @Test func promptKeyCollidingWithBoundKeyIsDropped() {
+        let b = ShortcutBindings.make(hold: .fn, handsFree: .fn, orchestrate: .leftOption,
+                                      prompts: [.fn, .leftOption, .rightCommand, .rightCommand])
+        #expect(b[.fn] == [.hold, .handsFree])
+        #expect(b[.leftOption] == .orchestrate)
+        #expect(b[.rightCommand] == .promptSlot(2))   // the later duplicate is dropped
+    }
+
+    @Test func oversizedPromptArrayIsIgnoredBeyondFour() {
+        let prompts: [ShortcutKey?] = [.rightCommand, nil, nil, nil, .rightControl]
+        let b = ShortcutBindings.make(hold: .fn, handsFree: nil, prompts: prompts)
+        #expect(b[.rightControl] == nil)
+    }
 }
