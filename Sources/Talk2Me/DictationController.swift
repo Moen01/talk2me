@@ -161,11 +161,13 @@ final class DictationController: ObservableObject {
             machine.reset()
             // Refused start must not leave an orchestrator target armed.
             pendingTarget = .focusedApp
+            recordingTargetLabel = nil
             return
         }
         guard let prepared, prepared.localeID == settings.localeID else {
             lastResult = "Not ready yet: \(readiness)"
             machine.reset()
+            recordingTargetLabel = nil
             Task { await prepareDictation() }
             return
         }
@@ -293,7 +295,7 @@ final class DictationController: ObservableObject {
             if outcome.cleaned {
                 lastResult = "Saved to Prompt \(n + 1) (\(wordCount) words)."
             } else if let failure = outcome.failure {
-                lastResult = "Saved to Prompt \(n + 1) (\(wordCount) words), raw transcript (\(failure))"
+                lastResult = "Saved to Prompt \(n + 1) (\(wordCount) words), raw transcript (\(failure))."
             } else {
                 lastResult = "Saved to Prompt \(n + 1) (\(wordCount) words), raw transcript."
             }
