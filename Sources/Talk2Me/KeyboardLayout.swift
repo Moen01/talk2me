@@ -18,6 +18,10 @@ enum KeyboardLayout {
 
     /// What Settings and the menu call a shortcut key.
     static func name(of key: ShortcutKey) -> String {
+        // A chord shows its modifier prefix before the base key's own name (e.g. "⌃⌥1").
+        if key.isChord {
+            return key.chordPrefix + name(of: ShortcutKey(keyCode: key.keyCode))
+        }
         if let name = key.builtInName { return name }
         if let character = character(for: CGKeyCode(key.keyCode))?.trimmingCharacters(in: .whitespacesAndNewlines),
            !character.isEmpty {
