@@ -64,6 +64,7 @@ final class StatusBarController: NSObject {
                 self.refresh()
             }
         }
+        armedStateTimer?.tolerance = 0.5
 
         refresh()
     }

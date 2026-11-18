@@ -41,7 +41,7 @@ final class AppSettings: ObservableObject {
     @Published var holdKey: ShortcutKey {
         didSet {
             defaults.set(Int(holdKey.keyCode), forKey: Key.holdKeyCode)
-            defaults.set(Int(holdKey.modifiers), forKey: Key.holdKeyModifiers)
+            defaults.set(Int(bitPattern: UInt(holdKey.modifiers)), forKey: Key.holdKeyModifiers)
         }
     }
     @Published var handsFreeEnabled: Bool { didSet { defaults.set(handsFreeEnabled, forKey: Key.handsFreeEnabled) } }
@@ -49,7 +49,7 @@ final class AppSettings: ObservableObject {
     @Published var handsFreeKey: ShortcutKey {
         didSet {
             defaults.set(Int(handsFreeKey.keyCode), forKey: Key.handsFreeKeyCode)
-            defaults.set(Int(handsFreeKey.modifiers), forKey: Key.handsFreeKeyModifiers)
+            defaults.set(Int(bitPattern: UInt(handsFreeKey.modifiers)), forKey: Key.handsFreeKeyModifiers)
         }
     }
     @Published var orchestrateEnabled: Bool { didSet { defaults.set(orchestrateEnabled, forKey: Key.orchestrateEnabled) } }
@@ -57,7 +57,7 @@ final class AppSettings: ObservableObject {
     @Published var orchestrateKey: ShortcutKey {
         didSet {
             defaults.set(Int(orchestrateKey.keyCode), forKey: Key.orchestrateKeyCode)
-            defaults.set(Int(orchestrateKey.modifiers), forKey: Key.orchestrateKeyModifiers)
+            defaults.set(Int(bitPattern: UInt(orchestrateKey.modifiers)), forKey: Key.orchestrateKeyModifiers)
         }
     }
     /// The folder the orchestrator session starts in.
@@ -69,7 +69,7 @@ final class AppSettings: ObservableObject {
         didSet {
             let codes = promptKeys.map { $0.map { Int($0.keyCode) } ?? -1 }
             defaults.set(try? JSONEncoder().encode(codes), forKey: Key.promptKeyCodes)
-            let mods = promptKeys.map { $0.map { Int($0.modifiers) } ?? 0 }
+            let mods = promptKeys.map { $0.map { Int(bitPattern: UInt($0.modifiers)) } ?? 0 }
             defaults.set(try? JSONEncoder().encode(mods), forKey: Key.promptKeyModifiers)
         }
     }

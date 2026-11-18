@@ -365,7 +365,7 @@ final class DictationController: ObservableObject {
 
     /// Arms slot n: writes its text to the clipboard so the user can Cmd+V it anywhere.
     /// An empty slot shows a status message instead.
-    func armSlot(_ n: Int) {
+    private func armSlot(_ n: Int) {
         let slot = settings.promptSlots[n]
         guard !slot.isEmpty else {
             lastResult = "Prompt \(n + 1) is empty."
@@ -386,7 +386,6 @@ final class DictationController: ObservableObject {
         // restore cycle while preserving the armed text, so we must not use it.
         if NSPasteboard.general.string(forType: .string) != settings.promptSlots[n].text {
             armedSlotIndex = nil
-            onChange?()
         }
     }
 
