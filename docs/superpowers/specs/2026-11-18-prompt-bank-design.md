@@ -137,7 +137,9 @@ New sidebar page **Prompt Bank** (icon `tray.full`), after Orchestrate:
 ### Recording indicator / feedback
 
 While recording into a slot, the existing indicator runs as usual; the menu-bar state
-line says which slot is being filled. No new indicator visuals in v1 (my call).
+line says which slot is being filled. The menu-bar icon itself shows the slot's
+number (1–4, e.g. SF Symbol `1.circle`) while the slot key is held and recording;
+it reverts to the normal icon when recording stops (Andreas's request, added mid-build).
 
 ## Decided by Andreas
 

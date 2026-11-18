@@ -75,11 +75,10 @@ final class StatusBarController: NSObject {
         case .cleaning: ("sparkles", "Cleaning up with Claude…")
         case .inserting: ("text.cursor", "Pasting…")
         }
-        // During an active slot capture, replace the icon with the slot number (1.circle … 4.circle).
-        let isActiveCapture = controller.phase == .recording
-            || controller.phase == .transcribing
-            || controller.phase == .cleaning
-        if let index = controller.recordingSlotIndex, isActiveCapture {
+        // Replace the icon with the slot number (1.circle … 4.circle) while the key is held
+        // and recording into the slot. recordingSlotIndex is cleared at stop, so this only
+        // fires during .recording — the .transcribing/.cleaning phases never reach here.
+        if let index = controller.recordingSlotIndex, controller.phase == .recording {
             symbol = "\(index + 1).circle"
         }
         item.button?.image = NSImage(systemSymbolName: symbol, accessibilityDescription: "Talk2Me: \(state)")
