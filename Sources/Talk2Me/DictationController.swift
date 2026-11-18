@@ -53,8 +53,6 @@ final class DictationController: ObservableObject {
     private var prepared: (localeID: String, locale: Locale, format: AVAudioFormat)? { didSet { changed() } }
     private var current: (session: DictationSession, started: Task<Error?, Never>)?
     private var cachedAPIKey: String?
-    /// One-shot timer that fires when a slot double-tap window expires.
-    private var slotTapTimer: DispatchWorkItem?
 
     /// Audio after the hold key is released, so the last word is not clipped.
     private let releaseTail: Duration = .milliseconds(150)
@@ -68,7 +66,7 @@ final class DictationController: ObservableObject {
     /// Key presses matter only while a shortcut key is down or hands-free mode is on.
     var wantsKeyEvents: Bool {
         switch machine.state {
-        case .holding, .tapping, .handsFree, .slotTapping: true
+        case .holding, .tapping, .handsFree: true
         case .idle, .awaitingRelease: false
         }
     }
@@ -128,34 +126,11 @@ final class DictationController: ObservableObject {
                 startRecording()
             case .stopRecording: stopRecording()
             case .cancelRecording: cancelRecording()
-            case .paste(let target):
-                if case .promptSlot(let n) = target {
-                    Task { await pasteSlot(n) }
-                }
+            case .arm: break // Task 4 wires this
             case nil: break
             }
             isHandsFree = machine.state == .handsFree
-            scheduleSlotTapTimerIfNeeded()
         }
-    }
-
-    /// If the state machine is in `slotTapping`, (re)schedule a one-shot timer for the
-    /// double-tap window. Any previous pending timer is cancelled first.
-    private func scheduleSlotTapTimerIfNeeded() {
-        // Cancel whatever was pending.
-        slotTapTimer?.cancel()
-        slotTapTimer = nil
-
-        guard case .slotTapping = machine.state else { return }
-
-        let work = DispatchWorkItem { [weak self] in
-            guard let self else { return }
-            let now = ProcessInfo.processInfo.systemUptime
-            let result = self.machine.slotTapExpired(at: now)
-            self.perform(result)
-        }
-        slotTapTimer = work
-        DispatchQueue.main.asyncAfter(deadline: .now() + machine.doubleTapWindow, execute: work)
     }
 
     /// The target the current recording is for. Consumed by the orchestrator in Task 9.

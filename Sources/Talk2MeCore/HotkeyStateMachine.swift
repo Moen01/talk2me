@@ -7,7 +7,9 @@ import Foundation
 ///   key again to finish, or Escape to discard.
 /// - A quick single tap of the hold key, or using it with another key (Fn+Delete), discards the recording.
 /// - Hold the orchestrate key: record for the orchestrator instead of the focused app.
-/// - Hold a prompt-slot key to record into its slot, tap it to paste the slot (after the double-tap window), double-tap for hands-free capture.
+/// - Hold a prompt-slot key to record into its slot. Quick tap arms the slot (the controller pastes
+///   it when handling `.arm`). Double-tap (second press within `doubleTapWindow`) starts a
+///   hands-free capture; Enter/Escape/key-again finishes or discards.
 public struct HotkeyStateMachine: Sendable {
     /// Which app or feature will receive the finished recording.
     public enum RecordingTarget: Equatable, Sendable {
@@ -23,8 +25,9 @@ public struct HotkeyStateMachine: Sendable {
         case startRecording(RecordingTarget)
         case stopRecording
         case cancelRecording
-        /// Paste the contents of a prompt slot without a new recording.
-        case paste(RecordingTarget)
+        /// Arm a prompt slot for pasting: the controller pastes the slot's saved content.
+        /// Implies the recording started by the same key-down is discarded.
+        case arm(RecordingTarget)
     }
 
     public enum State: Equatable, Sendable {
@@ -36,9 +39,6 @@ public struct HotkeyStateMachine: Sendable {
         case handsFree
         /// Waiting for a key to come up after a press that already decided the outcome.
         case awaitingRelease
-        /// A slot key was tapped quickly; waiting to see if a second tap arrives (double-tap → hands-free)
-        /// or the window expires (→ paste). The controller owns the timer and calls slotTapExpired(at:).
-        case slotTapping(slot: Int, since: TimeInterval)
     }
 
     /// A press shorter than this is a tap, not a dictation.
@@ -47,6 +47,9 @@ public struct HotkeyStateMachine: Sendable {
     public var doubleTapWindow: TimeInterval
     public private(set) var state: State = .idle
     private var lastTapAt: TimeInterval?
+    /// Remembers the last slot quick-tap so a second press of the same slot within
+    /// `doubleTapWindow` promotes to hands-free instead of arming again.
+    private var lastSlotTap: (slot: Int, at: TimeInterval)?
     /// Set when a slot key's second tap begins its hold, so the quick release promotes to .handsFree.
     private var slotSecondTapHolding: Bool = false
 
@@ -68,6 +71,15 @@ public struct HotkeyStateMachine: Sendable {
                 return .startRecording(.focusedApp)
             }
             if let slot = roles.promptSlotIndex {
+                // Check if this is a double-tap on the same slot within the window.
+                if let last = lastSlotTap, last.slot == slot, time - last.at <= doubleTapWindow {
+                    // Second press of same slot: start a real recording (hands-free outcome on quick release).
+                    slotSecondTapHolding = true
+                    lastSlotTap = nil
+                    state = .holding(since: time, roles: roles)
+                    return .startRecording(.promptSlot(slot))
+                }
+                // First press: start recording (will be discarded on quick release → arm).
                 state = .holding(since: time, roles: roles)
                 return .startRecording(.promptSlot(slot))
             }
@@ -80,16 +92,6 @@ public struct HotkeyStateMachine: Sendable {
             }
             state = .tapping(since: time)
             return nil
-        case .slotTapping(let pendingSlot, let since):
-            // A second press during the double-tap window for the SAME slot promotes to hands-free.
-            if let slot = roles.promptSlotIndex, slot == pendingSlot, time - since <= doubleTapWindow {
-                slotSecondTapHolding = true
-                state = .holding(since: time, roles: roles)
-                return .startRecording(.promptSlot(slot))
-            }
-            // A different bound key abandons the pending paste and handles from idle.
-            state = .idle
-            return shortcutDown(roles, at: time)
         case .handsFree:
             state = .awaitingRelease
             return .stopRecording
@@ -104,8 +106,11 @@ public struct HotkeyStateMachine: Sendable {
             // With separate hold and hands-free keys, only the held key's release ends the hold.
             guard roles == heldRoles else { return nil }
             guard time - since < tapThreshold else {
+                // Long hold: save the recording.
                 state = .idle
                 lastTapAt = nil
+                // Clear slot tap memory — the next tap starts fresh.
+                lastSlotTap = nil
                 slotSecondTapHolding = false
                 return .stopRecording
             }
@@ -115,10 +120,11 @@ public struct HotkeyStateMachine: Sendable {
                 state = .handsFree
                 return nil
             }
-            // Slot key first quick tap: enter slotTapping so the controller can schedule the expiry timer.
+            // Slot key first quick tap: arm the slot immediately (implies recording is discarded).
             if let slot = heldRoles.promptSlotIndex {
-                state = .slotTapping(slot: slot, since: time)
-                return .cancelRecording
+                state = .idle
+                lastSlotTap = (slot: slot, at: time)
+                return .arm(.promptSlot(slot))
             }
             if heldRoles.contains(.handsFree), !heldRoles.contains(.orchestrate), let last = lastTapAt, time - last <= doubleTapWindow + tapThreshold {
                 // Second quick tap: keep the recording that this press started.
@@ -138,9 +144,6 @@ public struct HotkeyStateMachine: Sendable {
         case .awaitingRelease:
             state = .idle
             return nil
-        case .slotTapping:
-            // A key-up during the tap window changes nothing: the tap registered on key-down, and the pending paste survives until expiry or a new press.
-            return nil
         case .idle, .handsFree:
             return nil
         }
@@ -158,10 +161,6 @@ public struct HotkeyStateMachine: Sendable {
             state = .awaitingRelease
             lastTapAt = nil
             return nil
-        case .slotTapping:
-            // Any other key press abandons the pending slot-paste; the key passes through.
-            state = .idle
-            return nil
         case .handsFree where keyCode == ShortcutKey.escapeKeyCode:
             state = .idle
             return .cancelRecording
@@ -173,19 +172,11 @@ public struct HotkeyStateMachine: Sendable {
         }
     }
 
-    /// Called by the controller when the double-tap window has elapsed after a slot quick-tap.
-    /// Returns `.paste(.promptSlot(n))` and goes idle if still in `slotTapping`; otherwise nil.
-    public mutating func slotTapExpired(at time: TimeInterval) -> Action? {
-        guard case .slotTapping(let slot, let since) = state,
-              time - since >= doubleTapWindow else { return nil }
-        state = .idle
-        return .paste(.promptSlot(slot))
-    }
-
     /// Back to idle, e.g. after an error stopped the recording or the shortcuts changed.
     public mutating func reset() {
         state = .idle
         lastTapAt = nil
+        lastSlotTap = nil
         slotSecondTapHolding = false
     }
 }
