@@ -7,6 +7,7 @@ import Foundation
 ///   key again to finish, or Escape to discard.
 /// - A quick single tap of the hold key, or using it with another key (Fn+Delete), discards the recording.
 /// - Hold the orchestrate key: record for the orchestrator instead of the focused app.
+/// - Hold a prompt-slot key to record into its slot, tap it to paste the slot (after the double-tap window), double-tap for hands-free capture.
 public struct HotkeyStateMachine: Sendable {
     /// Which app or feature will receive the finished recording.
     public enum RecordingTarget: Equatable, Sendable {
@@ -136,7 +137,10 @@ public struct HotkeyStateMachine: Sendable {
         case .awaitingRelease:
             state = .idle
             return nil
-        case .idle, .handsFree, .slotTapping:
+        case .slotTapping:
+            // A key-up during the tap window changes nothing: the tap registered on key-down, and the pending paste survives until expiry or a new press.
+            return nil
+        case .idle, .handsFree:
             return nil
         }
     }
