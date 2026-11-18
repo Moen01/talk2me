@@ -18,9 +18,10 @@ enum KeyboardLayout {
 
     /// What Settings and the menu call a shortcut key.
     static func name(of key: ShortcutKey) -> String {
-        // A chord shows its modifier prefix before the base key's own name (e.g. "⌃⌥1").
+        // A chord renders compactly as modifier prefix + bare character (no "X" key wrapper),
+        // because "X" key wrapper explains full key takeover — which chords don't do.
         if key.isChord {
-            return key.chordPrefix + name(of: ShortcutKey(keyCode: key.keyCode))
+            return key.chordPrefix + bareKeyName(keyCode: key.keyCode)
         }
         if let name = key.builtInName { return name }
         if let character = character(for: CGKeyCode(key.keyCode))?.trimmingCharacters(in: .whitespacesAndNewlines),
@@ -28,6 +29,17 @@ enum KeyboardLayout {
             return "\"\(character.uppercased())\" key"
         }
         return "Key \(key.keyCode)"
+    }
+
+    /// Bare key label for use inside chord display — no "X" key wrapper.
+    private static func bareKeyName(keyCode: Int64) -> String {
+        let plain = ShortcutKey(keyCode: keyCode)
+        if let name = plain.builtInName { return name }
+        if let character = character(for: CGKeyCode(keyCode))?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !character.isEmpty {
+            return character.uppercased()
+        }
+        return "Key \(keyCode)"
     }
 
     private static func withLayout<T>(_ body: (UnsafePointer<UCKeyboardLayout>) -> T?) -> T? {

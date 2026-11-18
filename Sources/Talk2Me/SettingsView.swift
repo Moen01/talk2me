@@ -258,7 +258,7 @@ struct SettingsView: View {
             }
 
             Section {
-                Text("Hold a key and talk to save into the slot. Tap the key to paste it. Recording again replaces the slot.")
+                Text("Hold a key and talk to save into the slot. Tap the key to load it — then paste with Cmd+V. Recording again replaces the slot.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -520,7 +520,7 @@ struct ShortcutPicker: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
-            if !key.isModifier {
+            if !key.isModifier && !key.isChord {
                 Text("\(KeyboardLayout.name(of: key)) won't type anything in other apps while Talk2Me is running.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
@@ -654,8 +654,8 @@ struct PromptKeyPicker: View {
     private static let unbound = ShortcutKey(keyCode: -1)
 
     private var options: [ShortcutKey] {
-        // Build the preset list, ensuring the currently bound key is always present.
-        var list = ShortcutKey.presets
+        // ⌃⌥1…⌃⌥4 chord presets lead the list; single-key presets follow.
+        var list = (1...4).map { ShortcutKey.presetChord($0) } + ShortcutKey.presets
         if let key = promptKey, !list.contains(key) { list.append(key) }
         return list
     }
